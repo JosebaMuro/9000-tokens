@@ -1,0 +1,45 @@
+name: Prueba Termux
+
+# Ejecuta el binario de Android dentro de un entorno Termux real
+# (termux-docker, con bionic) para comprobar que instala y arranca.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release que probar"
+        required: true
+
+jobs:
+  termux:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Descargar binario
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir d && cd d
+          gh release download "${{ github.event.inputs.tag }}" -R "${{ github.repository }}" -p infinito-android-termux-arm64
+          chmod 755 infinito-android-termux-arm64
+      - name: Instalar y arrancar en Termux
+        run: |
+          cat > d/test.sh <<'SH'
+          set -x
+          cd ~
+          B=/d/infinito-android-termux-arm64
+          $B version
+          $B install
+          ( $B serve omniroute freellmapi > serve.log 2>&1 & )
+          ok=0
+          for i in $(seq 1 60); do
+            sleep 3
+            o=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:20128/v1/models)
+            f=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/v1/models)
+            g=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8686/health)
+            echo "intento $i: omniroute=$o freellmapi=$f integrada=$g"
+            if [ "$o" != 000 ] && [ "$f" != 000 ] && [ "$g" = 200 ]; then ok=1; break; fi
+          done
+          tail -20 serve.log
+          for l in ~/.infinito/logs/*.log; do echo "--- $l"; tail -30 "$l"; done
+          [ $ok = 1 ]
+          SH
+          docker run --rm --privileged -v "$PWD/d:/d" termux/termux-docker:aarch64 bash /d/test.sh
