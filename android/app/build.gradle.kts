@@ -19,6 +19,8 @@ android {
         targetSdk = 28
         versionCode = appCode
         versionName = appVersion
+        // Solo las arquitecturas para las que va el binario de Infinito.
+        ndk { abiFilters += ((project.findProperty("abis") as String?) ?: "arm64-v8a").split(",") }
     }
 
     signingConfigs {

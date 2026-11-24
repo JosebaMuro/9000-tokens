@@ -120,7 +120,7 @@ jobs:
         run: |
           mkdir -p android/app/src/main/jniLibs/x86_64
           cp art/infinito-linux-x64-ligero android/app/src/main/jniLibs/x86_64/libinfinito.so
-          gradle -p android assembleDebug --no-daemon
+          gradle -p android assembleDebug -Pabis=x86_64 --no-daemon
       - name: Activar KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
