@@ -74,6 +74,7 @@ class InfinitoService : Service(), TerminalSessionClient {
             "INFINITO_HOME=$files/config",
             "INFINITO_ANDROID_APP=1",
             "INFINITO_OPEN_FILE=${openFile.absolutePath}",
+            "INFINITO_CRASH_FILE=${File(filesDir, "crash.txt").absolutePath}",
         )
         watchOpenUrl(openFile)
         val s = TerminalSession(bin, home.absolutePath, arrayOf("infinito"), env, 3000, this)
@@ -161,6 +162,8 @@ class InfinitoService : Service(), TerminalSessionClient {
     override fun onSessionFinished(finishedSession: TerminalSession) {
         val code = finishedSession.exitStatus
         val text = runCatching { finishedSession.emulator?.screen?.transcriptText }.getOrNull().orEmpty()
+        val crash = runCatching { File(filesDir, "crash.txt").readText() }.getOrNull().orEmpty()
+        if (crash.isNotBlank()) Log.e(TAG, "Fallo de Infinito:\n" + crash.take(4000))
         Log.i(TAG, "Infinito terminó (código $code). Pantalla:\n" + text.trim().take(3000) + "\n…\n" + text.takeLast(1500))
         if (code == 0) {
             ui?.onSessionFinished(finishedSession)

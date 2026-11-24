@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -36,6 +37,11 @@ Pasarela integrada (por defecto):
 `
 
 func main() {
+	if p := os.Getenv("INFINITO_CRASH_FILE"); p != "" {
+		if f, err := os.Create(p); err == nil {
+			_ = debug.SetCrashOutput(f, debug.CrashOptions{})
+		}
+	}
 	fixDNS()
 	cfg, err := loadConfig()
 	if err != nil {
