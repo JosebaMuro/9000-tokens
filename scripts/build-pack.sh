@@ -6,6 +6,10 @@ TARGET="$1"
 OUT="$(mkdir -p "${2:-dist}" && cd "${2:-dist}" && pwd)"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WORK="${WORK:-$ROOT/work-$TARGET}"
+# En Windows (Git Bash) usamos rutas C:/... que entienden tanto bash como node.
+if command -v cygpath >/dev/null 2>&1; then
+  WORK="$(cygpath -m "$WORK")"; ROOT="$(cygpath -m "$ROOT")"; OUT="$(cygpath -m "$OUT")"
+fi
 PACK="$WORK/pack"
 NODE_MAJOR="${NODE_MAJOR:-22}"
 VERSION="${VERSION:-dev}"
