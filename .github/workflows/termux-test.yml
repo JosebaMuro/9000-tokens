@@ -58,25 +58,24 @@ jobs:
       - name: Instalar y arrancar sin Termux
         run: |
           cat > d/test.sh <<'SH'
-          set -x
+          # Solo órdenes internas de bash mientras las bibliotecas de Termux están escondidas.
           P=/data/data/com.termux/files/usr
-          A=/data/local/tmp/app; mkdir -p $A/home $A/cache
+          A=/data/data/com.termux/files/apptest; mkdir -p $A/home $A/cache
           cp /d/infinito-android-termux-arm64 $A/libinfinito.so
-          espera() { read -t "$1" -u 3 3< <(read -t "$1"; echo); true; }
+          mkfifo $A/f
+          ultimas() { local -a L; mapfile -t L < "$1"; local n=${#L[@]}; local s=$(( n > $2 ? n - $2 : 0 )); printf '%s\n' "${L[@]:s}"; }
+          hget() { if exec 5<>/dev/tcp/127.0.0.1/$1; then printf 'GET %s HTTP/1.0\r\nHost: x\r\n\r\n' "$2" >&5; read -t 30 -r l <&5; echo "$1$2 -> $l"; exec 5>&-; else echo "$1 cerrado"; fi; }
           export HOME=$A/home TMPDIR=$A/cache INFINITO_HOME=$A/config INFINITO_DATA=$A/infinito INFINITO_ANDROID_APP=1
           mv $P/lib $P/lib.off
-          (PATH=/system/bin:/system/xbin $A/libinfinito.so install > $A/install.log 2>&1)
-          (PATH=/system/bin:/system/xbin $A/libinfinito.so serve omniroute freellmapi > $A/serve.log 2>&1 &)
-          espera 150
+          echo "== install"; PATH=/system/bin:/system/xbin $A/libinfinito.so install > $A/install.log 2>&1; echo "salida $?"
+          ultimas $A/install.log 5
+          LD_LIBRARY_PATH=$A/infinito/runtime/termux/usr/lib $A/infinito/runtime/termux/usr/bin/node -v; echo "node salida $?"
+          (PATH=/system/bin:/system/xbin exec $A/libinfinito.so serve omniroute freellmapi > $A/serve.log 2>&1) &
+          for i in 1 2 3 4 5 6 7 8; do read -t 20 <> $A/f; hget 20128 /v1/models; hget 3001 /v1/models; done
+          hget 8686 /health
+          echo "== serve.log"; ultimas $A/serve.log 30
+          for l in $A/infinito/logs/*.log; do echo "--- $l"; ultimas "$l" 50; done
           mv $P/lib.off $P/lib
-          curl -s -m 20 -o /dev/null -w 'omniroute %{http_code}\n' http://127.0.0.1:20128/v1/models
-          curl -s -m 20 -o /dev/null -w 'freellmapi %{http_code}\n' http://127.0.0.1:3001/v1/models
-          curl -s -m 20 -w '\n' http://127.0.0.1:8686/health
-          tail -5 $A/install.log; tail -30 $A/serve.log
-          for l in $A/infinito/logs/*.log; do echo "--- $l"; tail -40 "$l"; done
-          LD_LIBRARY_PATH=$A/infinito/runtime/termux/usr/lib $A/infinito/runtime/termux/usr/bin/node -v
-          mv $P/lib $P/lib.off
-          LD_LIBRARY_PATH=$A/infinito/runtime/termux/usr/lib $A/infinito/runtime/termux/usr/bin/node -v 2> $A/node.err; mv $P/lib.off $P/lib; cat $A/node.err
-          ls $A/infinito/runtime/termux/usr/lib | head -80
+          ls $A/infinito/runtime/termux/usr/lib | head -100
           SH
           docker run --rm --privileged -v "$PWD/d:/d" termux/termux-docker:aarch64 bash /d/test.sh
