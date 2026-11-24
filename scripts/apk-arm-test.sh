@@ -7,7 +7,9 @@ adb install -r -g "$APK" || exit 1
 adb shell am start -W -n app.infinito.tui/.MainActivity
 sleep 10
 DIR=$(adb shell pm path app.infinito.tui | sed 's/package://;s/base.apk//' | tr -d '\r')
-LIB=$(adb shell "ls -d ${DIR}lib/*/libinfinito.so" | tr -d '\r')
+adb shell "ls -laR ${DIR}"
+LIB=$(adb shell "find ${DIR} -name libinfinito.so" | tr -d "\r" | head -1)
+[ -n "$LIB" ] || { echo "no se extrajo libinfinito.so"; adb shell dumpsys package app.infinito.tui | grep -iE "abi|nativeLib|legacy"; exit 1; }
 echo "LIB=$LIB"
 F=/data/data/app.infinito.tui/files
 ENVS="HOME=$F/home TMPDIR=/data/data/app.infinito.tui/cache INFINITO_HOME=$F/config INFINITO_DATA=$F/infinito INFINITO_ANDROID_APP=1 PATH=/system/bin:/system/xbin"
@@ -27,5 +29,5 @@ curl -s -m 20 http://127.0.0.1:13001/v1/models | head -c 400; echo
 echo "== registros"
 RA "cat $F/serve.log | tail -40"
 RA "for f in infinito/logs/*.log; do echo \"--- \$f\"; tail -60 \$f; done"
-RA "ps -A -o PID,NAME,ARGS | grep -v ' \\[' "
+RA "ps -A -o PID,NAME,ARGS" | grep -vF "["
 true
