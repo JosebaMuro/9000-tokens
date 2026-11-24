@@ -67,6 +67,8 @@ jobs:
           hget() { if exec 5<>/dev/tcp/127.0.0.1/$1; then printf 'GET %s HTTP/1.0\r\nHost: x\r\nAuthorization: Bearer %s\r\n\r\n' "$2" "$3" >&5; read -t 30 -r l <&5; echo "$1$2 -> $l"; exec 5>&-; else echo "$1 cerrado"; fi; }
           export HOME=$A/home TMPDIR=$A/cache INFINITO_HOME=$A/config INFINITO_DATA=$A/infinito INFINITO_ANDROID_APP=1
           mv $P/lib $P/lib.off
+          # Como en un móvil con Termux instalado: su carpeta existe pero no se puede leer.
+          chmod 000 $P/etc
           echo "== install"; PATH=/system/bin:/system/xbin $A/libinfinito.so install > $A/install.log 2>&1; echo "salida $?"
           ultimas $A/install.log 5
           LD_LIBRARY_PATH=$A/infinito/runtime/termux/usr/lib $A/infinito/runtime/termux/usr/bin/node -v; echo "node salida $?"

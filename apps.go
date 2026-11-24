@@ -103,6 +103,15 @@ func nodeEnv() []string {
 			lib += ":" + p
 		}
 		out = append(out, "LD_LIBRARY_PATH="+lib)
+		// Node de Termux busca su openssl.cnf en /data/data/com.termux/...; si
+		// Termux está instalado, esa carpeta existe pero es de otra app y
+		// OpenSSL aborta con "Permission denied". Usamos la del paquete.
+		cnf := filepath.Join(usr, "etc", "tls", "openssl.cnf")
+		if _, err := os.Stat(cnf); err != nil {
+			_ = os.MkdirAll(filepath.Dir(cnf), 0o755)
+			_ = os.WriteFile(cnf, []byte("# Infinito\n"), 0o644)
+		}
+		out = append(out, "OPENSSL_CONF="+cnf, "SSL_CERT_DIR="+filepath.Join(usr, "etc", "tls", "certs"))
 		cert := filepath.Join(usr, "etc", "tls", "cert.pem")
 		if _, err := os.Stat(cert); err == nil {
 			out = append(out, "SSL_CERT_FILE="+cert, "NODE_EXTRA_CA_CERTS="+cert)
