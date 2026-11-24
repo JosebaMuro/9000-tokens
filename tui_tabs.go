@@ -134,6 +134,11 @@ func (m *model) viewHome(height int) string {
 		f, _ := m.installPr.file.Load().(string)
 		sb.WriteString(sCardOn.Width(cw - 2).Render(sTitle.Render("Instalando sin internet…") + "\n" + bar + fmt.Sprintf(" %3.0f%%", pct*100) + "\n" + sDim.Render(truncate(f, inner))))
 		sb.WriteString("\n")
+	} else if hasPack() && (m.apps.Installed("omniroute") || m.apps.Installed("freellmapi")) && packOutdated() {
+		msg := sTitle.Render("Hay una versión nueva del paquete") + "\n" +
+			"Este binario trae versiones más nuevas de Node.js, OmniRoute o FreeLLMAPI. Tus claves y datos se conservan.\n" +
+			m.btn("home:install:all", "Actualizar", sBtnPri)
+		sb.WriteString(sCardOn.Width(cw-2).Render(msg) + "\n")
 	} else if hasPack() && (!m.apps.Installed("omniroute") || !m.apps.Installed("freellmapi")) {
 		msg := sTitle.Render("Paquete offline incluido") + "\n" +
 			"Este binario trae Node.js, OmniRoute y FreeLLMAPI. Instálalos una vez y funcionan sin internet.\n" +

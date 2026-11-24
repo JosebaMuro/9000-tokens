@@ -56,8 +56,91 @@ jobs:
           compression-level: 0
           retention-days: 3
 
-  release:
+  # APK para Android: terminal propia con Infinito y el paquete offline dentro.
+  apk:
     needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: termux-arm64
+          path: art
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Compilar APK
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          cp art/infinito-android-termux-arm64 android/app/src/main/jniLibs/arm64-v8a/libinfinito.so
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/infinito.jks"
+            export ANDROID_KEYSTORE_FILE="$RUNNER_TEMP/infinito.jks"
+          else
+            echo "::warning::Sin clave de firma en los secretos: el APK se firma con una clave temporal."
+          fi
+          gradle -p android assembleRelease -PappVersion="${TAG#v}" -PappCode="${{ github.run_number }}" --no-daemon
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk dist/infinito-android-arm64.apk
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: dist/*
+          compression-level: 0
+          retention-days: 3
+
+  # Prueba la app en un emulador Android (x86_64, con la versión ligera).
+  apk-test:
+    needs: build
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-x64
+          path: art
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Compilar APK de prueba
+        run: |
+          mkdir -p android/app/src/main/jniLibs/x86_64
+          cp art/infinito-linux-x64-ligero android/app/src/main/jniLibs/x86_64/libinfinito.so
+          gradle -p android assembleDebug --no-daemon
+      - name: Activar KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash scripts/apk-test.sh android/app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pruebas-apk
+          path: shots/*
+          retention-days: 7
+
+  release:
+    needs: [build, apk, apk-test]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -65,6 +148,8 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Quitar archivos de prueba
+        run: rm -f dist/*.png dist/procesos.txt dist/health.txt dist/logcat.txt
       - name: Sumas SHA-256
         run: cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
       - name: Publicar release

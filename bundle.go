@@ -25,6 +25,10 @@ import (
 
 const packMagic = "INFPACK1"
 
+// INFPACK2 añade, justo antes del pie, el pack.json y su longitud, para
+// saber la versión del paquete sin descomprimirlo.
+const packMagic2 = "INFPACK2"
+
 type packInfo struct {
 	Target   string            `json:"target"`
 	Built    string            `json:"built"`
@@ -71,6 +75,16 @@ func findPack() (path string, offset, size int64, err error) {
 			off := int64(binary.LittleEndian.Uint64(foot[8:]))
 			return c, off, st.Size() - 16 - off, nil
 		}
+		if err == nil && string(foot[:8]) == packMagic2 {
+			off := int64(binary.LittleEndian.Uint64(foot[8:]))
+			lb := make([]byte, 8)
+			if g, e := os.Open(c); e == nil {
+				_, _ = g.ReadAt(lb, st.Size()-24)
+				g.Close()
+			}
+			jl := int64(binary.LittleEndian.Uint64(lb))
+			return c, off, st.Size() - 24 - jl - off, nil
+		}
 		if c != exe {
 			// .pack sin pie: el archivo entero es el paquete
 			return c, 0, st.Size(), nil
@@ -82,6 +96,56 @@ func findPack() (path string, offset, size int64, err error) {
 func hasPack() bool {
 	_, _, _, err := findPack()
 	return err == nil
+}
+
+// packMeta lee el pack.json pegado al binario (solo formato INFPACK2).
+func packMeta() *packInfo {
+	exe, err := os.Executable()
+	if err != nil {
+		return nil
+	}
+	if p, e := filepath.EvalSymlinks(exe); e == nil {
+		exe = p
+	}
+	f, err := os.Open(exe)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	st, _ := f.Stat()
+	if st.Size() < 24 {
+		return nil
+	}
+	foot := make([]byte, 24)
+	if _, err := f.ReadAt(foot, st.Size()-24); err != nil || string(foot[8:16]) != packMagic2 {
+		return nil
+	}
+	jl := int64(binary.LittleEndian.Uint64(foot[:8]))
+	if jl <= 0 || jl > 1<<20 {
+		return nil
+	}
+	b := make([]byte, jl)
+	if _, err := f.ReadAt(b, st.Size()-24-jl); err != nil {
+		return nil
+	}
+	var p packInfo
+	if json.Unmarshal(b, &p) != nil {
+		return nil
+	}
+	return &p
+}
+
+// packOutdated: el paquete del binario es distinto del instalado.
+func packOutdated() bool {
+	pm := packMeta()
+	if pm == nil {
+		return false
+	}
+	in, err := installedInfo()
+	if err != nil {
+		return false
+	}
+	return in.Built != pm.Built
 }
 
 func installedInfo() (*packInfo, error) {
@@ -327,9 +391,14 @@ func runPack(args []string) error {
 	if err := enc.Close(); err != nil {
 		return err
 	}
-	foot := make([]byte, 16)
-	copy(foot, packMagic)
-	binary.LittleEndian.PutUint64(foot[8:], uint64(n))
+	meta, _ := os.ReadFile(filepath.Join(dir, "pack.json"))
+	if _, err := out.Write(meta); err != nil {
+		return err
+	}
+	foot := make([]byte, 24)
+	binary.LittleEndian.PutUint64(foot[0:], uint64(len(meta)))
+	copy(foot[8:], packMagic2)
+	binary.LittleEndian.PutUint64(foot[16:], uint64(n))
 	if _, err := out.Write(foot); err != nil {
 		return err
 	}

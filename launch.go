@@ -121,6 +121,10 @@ func startDetached(name string, args ...string) error {
 }
 
 func openURL(url string) error {
+	// Dentro del APK: la app vigila este archivo y abre el navegador.
+	if f := os.Getenv("INFINITO_OPEN_FILE"); f != "" {
+		return os.WriteFile(f, []byte(url), 0o600)
+	}
 	var cmd *exec.Cmd
 	switch {
 	case runtime.GOOS == "windows":

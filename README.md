@@ -25,12 +25,17 @@ Recursos originales: <https://antonspain-ia-recursos.surge.sh/infinito/>
 
 En [Releases](../../releases) hay dos versiones por sistema:
 
-| Sistema | Completa (offline, ~450 MB) | Ligera (~10 MB) |
+| Sistema | Completa (offline, 280–400 MB) | Ligera (~10 MB) |
 | --- | --- | --- |
+| **Android (app, sin Termux)** | `infinito-android-arm64.apk` | |
 | Windows x64 | `infinito-win-x64.exe` | `infinito-win-x64-ligero.exe` |
 | Linux x64 | `infinito-linux-x64` | `infinito-linux-x64-ligero` |
 | Linux ARM64 | `infinito-linux-arm64` | `infinito-linux-arm64-ligero` |
 | Android (Termux) | `infinito-android-termux-arm64` | `infinito-android-termux-arm64-ligero` |
+
+En Android, lo más fácil es el APK: se instala como cualquier app, trae su
+propia terminal con teclas extra (Esc, Tab, Ctrl, flechas, zoom) y sigue
+funcionando en segundo plano. Se instala fuera de Google Play.
 
 ```bash
 chmod +x infinito-linux-x64
@@ -62,6 +67,10 @@ la carpeta [`guias/`](guias/).
   `%LOCALAPPDATA%\infinito`).
 - En Android el paquete lleva el Node.js de Termux y sus bibliotecas en una
   carpeta propia, sin tocar los paquetes del sistema.
+- La app de Android (carpeta [`android/`](android/)) usa la terminal de
+  Termux (Apache 2.0) y lleva el binario de Termux como librería nativa.
+  Apunta a la API 28 para poder ejecutar Node.js desde su carpeta, como
+  Termux; por eso no puede publicarse en Google Play.
 - El flujo [`release.yml`](.github/workflows/release.yml) compila cada
   paquete en su propio sistema (Windows, Linux x64, Linux ARM64), lo prueba
   arrancando OmniRoute y FreeLLMAPI, y publica el release al subir una

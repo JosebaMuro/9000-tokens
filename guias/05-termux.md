@@ -1,5 +1,18 @@
 # Notas para Android (Termux), Linux y Windows
 
+## Android con la app (lo más fácil)
+
+Descarga infinito-android-arm64.apk en el móvil y ábrelo. Android pedirá
+permiso para instalar apps de fuera de Google Play. Al abrir la app ves
+Infinito directamente, con una fila de teclas abajo:
+
+    ⌨ teclado · Esc · Tab · Ctrl · Alt · flechas · Pág↑/↓ · A+/A− · Pegar
+
+Toca los botones de la pantalla como en cualquier app; pellizca para
+cambiar el tamaño de letra. Las pasarelas siguen funcionando aunque
+cambies de app (verás una notificación "Infinito en marcha"); pulsa
+"Salir" en la notificación para cerrarlo todo.
+
 ## Android (Termux)
 
     chmod +x infinito-android-termux-arm64
