@@ -71,6 +71,7 @@ class MainActivity : Activity(), ServiceConnection, TerminalViewClient, Terminal
         val s = (binder as InfinitoService.LocalBinder).service
         service = s
         s.ui = this
+        intent?.getStringExtra("autostart")?.let { s.autostart = it }
         terminal.attachSession(s.ensureSession())
         terminal.requestFocus()
         terminal.onScreenUpdated()

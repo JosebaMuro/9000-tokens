@@ -89,6 +89,7 @@ func runTUI(cfg *Config) {
 		_ = gw.Start() // si el puerto está ocupado, el Panel lo indica
 	}
 	apps := NewAppManager(cfg)
+	autostart(apps)
 	// Evita preguntar el color de fondo al terminal (algunos no contestan y
 	// la interfaz tardaría segundos en salir). Oscuro salvo que COLORFGBG
 	// diga lo contrario.
@@ -204,4 +205,23 @@ func runClaude(cfg *Config, extra []string) {
 	if err != nil {
 		os.Exit(1)
 	}
+}
+
+// autostart: INFINITO_AUTOSTART="omniroute,freellmapi" instala (si hace falta)
+// y arranca esos repos al abrir la interfaz. Lo usa la prueba del APK.
+func autostart(apps *AppManager) {
+	v := os.Getenv("INFINITO_AUTOSTART")
+	if v == "" {
+		return
+	}
+	go func() {
+		if !nodeInstalled() && hasPack() {
+			_ = installPack(&progress{}, nil)
+		}
+		for _, id := range strings.Split(v, ",") {
+			if id = strings.TrimSpace(strings.ToLower(id)); id != "" {
+				_ = apps.Start(id)
+			}
+		}
+	}()
 }

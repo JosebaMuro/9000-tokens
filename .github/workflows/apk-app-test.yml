@@ -1,0 +1,60 @@
+name: apk-app-test
+# Prueba OmniRoute y FreeLLMAPI arrancados DENTRO de la app Android (con sus
+# restricciones reales), en un emulador x86_64: el paquete del release de
+# Termux con Node de Termux para x86_64.
+on:
+  workflow_dispatch:
+    inputs:
+      binario:
+        description: "Release del que tomar el paquete de Termux"
+        default: "v1.1.1.a"
+jobs:
+  emulador:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - name: Paquete x86_64
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "${{ inputs.binario }}" -p infinito-android-termux-arm64 -O arm.bin
+          python3 - <<'PY'
+          import struct
+          f=open('arm.bin','rb'); f.seek(0,2); n=f.tell(); f.seek(n-24); foot=f.read(24)
+          jl,=struct.unpack('<Q',foot[:8]); assert foot[8:16]==b'INFPACK2'; off,=struct.unpack('<Q',foot[16:])
+          f.seek(off); size=n-24-jl-off
+          with open('pack.tar.zst','wb') as o:
+              while size>0:
+                  b=f.read(min(size,1<<24)); o.write(b); size-=len(b)
+          PY
+          mkdir pk && zstd -d --long=31 -c pack.tar.zst | tar -x -C pk
+          rm -rf pk/runtime/termux
+          TERMUX_ARCH=x86_64 python3 scripts/termux_fetch.py pk/runtime/termux nodejs-lts ca-certificates
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o inf .
+          go build -o host .
+          mkdir -p android/app/src/main/jniLibs/x86_64
+          ./host pack pk inf android/app/src/main/jniLibs/x86_64/libinfinito.so
+          gradle -p android assembleDebug -Pabis=x86_64 --no-daemon
+      - name: Activar KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: google_apis
+          ram-size: 4096M
+          disk-size: 8G
+          disable-animations: true
+          script: bash scripts/apk-app-test.sh android/app/build/outputs/apk/debug/app-debug.apk

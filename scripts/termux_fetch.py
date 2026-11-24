@@ -4,7 +4,7 @@ extrae en DEST/usr, sin necesitar dpkg. Uso: termux_fetch.py DEST pkg..."""
 import gzip, io, lzma, os, sys, tarfile, urllib.request
 
 REPO = "https://packages.termux.dev/apt/termux-main"
-ARCH = "aarch64"
+ARCH = os.environ.get("TERMUX_ARCH", "aarch64")
 PREFIX = "./data/data/com.termux/files/usr/"
 
 

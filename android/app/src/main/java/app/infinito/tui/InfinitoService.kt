@@ -54,6 +54,9 @@ class InfinitoService : Service(), TerminalSessionClient {
         return START_NOT_STICKY
     }
 
+    /** Repos que arrancar al abrir (extra "autostart" del intent; para pruebas). */
+    var autostart: String? = null
+
     fun ensureSession(): TerminalSession {
         session?.let { return it }
         val files = filesDir.absolutePath
@@ -61,7 +64,8 @@ class InfinitoService : Service(), TerminalSessionClient {
         val tmp = cacheDir.apply { mkdirs() }
         val openFile = File(filesDir, "open-url")
         val bin = File(applicationInfo.nativeLibraryDir, "libinfinito.so").absolutePath
-        val env = arrayOf(
+        val env = listOfNotNull(
+            autostart?.let { "INFINITO_AUTOSTART=$it" },
             "HOME=${home.absolutePath}",
             "TMPDIR=${tmp.absolutePath}",
             "TERM=xterm-256color",
@@ -75,7 +79,7 @@ class InfinitoService : Service(), TerminalSessionClient {
             "INFINITO_ANDROID_APP=1",
             "INFINITO_OPEN_FILE=${openFile.absolutePath}",
             "INFINITO_CRASH_FILE=${File(filesDir, "crash.txt").absolutePath}",
-        )
+        ).toTypedArray()
         watchOpenUrl(openFile)
         val s = TerminalSession(bin, home.absolutePath, arrayOf("infinito"), env, 3000, this)
         session = s
