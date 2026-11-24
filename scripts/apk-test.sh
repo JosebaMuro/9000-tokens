@@ -4,10 +4,12 @@ set -x
 APK="$1"
 mkdir -p shots
 adb install -r -g "$APK"
+adb logcat -c
 adb shell am start -W -n app.infinito.tui/.MainActivity
 sleep 20
 adb exec-out screencap -p > shots/1-inicio.png
-adb shell ps -A | grep -i infinito | tee shots/procesos.txt
+adb shell ps -A -o PID,PPID,USER,NAME,ARGS | grep -iE 'infinito|PID' | tee shots/procesos.txt
+adb shell dumpsys activity services app.infinito.tui | head -40
 adb forward tcp:18686 tcp:8686
 H=$(curl -s -m 5 http://127.0.0.1:18686/health || true)
 echo "health: $H" | tee shots/health.txt
@@ -20,5 +22,8 @@ adb exec-out screencap -p > shots/2-toque.png
 adb shell input keyevent KEYCODE_BACK
 sleep 2
 adb exec-out screencap -p > shots/3-atras.png
-adb logcat -d -s Infinito:* AndroidRuntime:E > shots/logcat.txt || true
+adb logcat -d > shots/logcat.txt || true
+echo "===== logcat (app) ====="
+PIDS=$(adb shell pidof app.infinito.tui || true)
+grep -E "app.infinito|Infinito|AndroidRuntime|FATAL|libinfinito|termux|DEBUG  " shots/logcat.txt | tail -150
 echo "$H" | grep -q '"ok":true'
