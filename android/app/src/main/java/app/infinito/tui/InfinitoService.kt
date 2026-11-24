@@ -161,7 +161,7 @@ class InfinitoService : Service(), TerminalSessionClient {
     override fun onSessionFinished(finishedSession: TerminalSession) {
         val code = finishedSession.exitStatus
         val text = runCatching { finishedSession.emulator?.screen?.transcriptText }.getOrNull().orEmpty()
-        Log.i(TAG, "Infinito terminó (código $code). Pantalla:\n" + text.takeLast(6000))
+        Log.i(TAG, "Infinito terminó (código $code). Pantalla:\n" + text.trim().take(3000) + "\n…\n" + text.takeLast(1500))
         if (code == 0) {
             ui?.onSessionFinished(finishedSession)
             stopEverything()
