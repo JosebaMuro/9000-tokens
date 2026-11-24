@@ -64,14 +64,21 @@ jobs:
           cp /d/infinito-android-termux-arm64 $A/libinfinito.so
           mkfifo $A/f
           ultimas() { local -a L; mapfile -t L < "$1"; local n=${#L[@]}; local s=$(( n > $2 ? n - $2 : 0 )); printf '%s\n' "${L[@]:s}"; }
-          hget() { if exec 5<>/dev/tcp/127.0.0.1/$1; then printf 'GET %s HTTP/1.0\r\nHost: x\r\n\r\n' "$2" >&5; read -t 30 -r l <&5; echo "$1$2 -> $l"; exec 5>&-; else echo "$1 cerrado"; fi; }
+          hget() { if exec 5<>/dev/tcp/127.0.0.1/$1; then printf 'GET %s HTTP/1.0\r\nHost: x\r\nAuthorization: Bearer %s\r\n\r\n' "$2" "$3" >&5; read -t 30 -r l <&5; echo "$1$2 -> $l"; exec 5>&-; else echo "$1 cerrado"; fi; }
           export HOME=$A/home TMPDIR=$A/cache INFINITO_HOME=$A/config INFINITO_DATA=$A/infinito INFINITO_ANDROID_APP=1
           mv $P/lib $P/lib.off
           echo "== install"; PATH=/system/bin:/system/xbin $A/libinfinito.so install > $A/install.log 2>&1; echo "salida $?"
           ultimas $A/install.log 5
           LD_LIBRARY_PATH=$A/infinito/runtime/termux/usr/lib $A/infinito/runtime/termux/usr/bin/node -v; echo "node salida $?"
           (PATH=/system/bin:/system/xbin exec $A/libinfinito.so serve omniroute freellmapi > $A/serve.log 2>&1) &
-          for i in 1 2 3 4 5 6 7 8; do read -t 20 <> $A/f; hget 20128 /v1/models; hget 3001 /v1/models; done
+          for i in 1 2 3 4 5 6 7 8; do
+            read -t 20 <> $A/f
+            C=$(<$A/config/config.json); OK=; FK=
+            [[ $C =~ (omr-[0-9a-f]+) ]] && OK=${BASH_REMATCH[1]}
+            [[ $C =~ (freellmapi-[0-9a-f]+) ]] && FK=${BASH_REMATCH[1]}
+            hget 20128 /v1/models "$OK"; hget 3001 /v1/models "$FK"
+          done
+          [[ -n $OK && -n $FK ]] && echo "claves: omniroute y freellmapi configuradas"
           hget 8686 /health
           echo "== serve.log"; ultimas $A/serve.log 30
           for l in $A/infinito/logs/*.log; do echo "--- $l"; ultimas "$l" 50; done

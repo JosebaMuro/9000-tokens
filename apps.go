@@ -150,7 +150,16 @@ func (a *AppManager) Start(id string) error {
 		data := filepath.Join(dataDir(), "data", "omniroute")
 		_ = os.MkdirAll(data, 0o700)
 		args = []string{appEntry(id), "serve", "--port", portOf(c.OmniRoute.URL, "20128"), "--no-open"}
-		env = append(env, "DATA_DIR="+data, "OMNIROUTE_SERVER_HOST=127.0.0.1", "OMNIROUTE_SKIP_POSTINSTALL=1")
+		// OmniRoute pide clave en /v1: le damos una fija (OMNIROUTE_API_KEY)
+		// y la usa el chat de Infinito sin que el usuario tenga que crearla.
+		c.mu.Lock()
+		if c.OmniRoute.APIKey == "" {
+			c.OmniRoute.APIKey = "omr-" + randHex(16)
+		}
+		okey := c.OmniRoute.APIKey
+		c.mu.Unlock()
+		_ = c.Save()
+		env = append(env, "DATA_DIR="+data, "OMNIROUTE_SERVER_HOST=127.0.0.1", "OMNIROUTE_SKIP_POSTINSTALL=1", "OMNIROUTE_API_KEY="+okey)
 		dir = data
 	case "freellmapi":
 		data := filepath.Join(dataDir(), "data", "freellmapi")
@@ -192,6 +201,9 @@ func (a *AppManager) Start(id string) error {
 	p.cmd = cmd
 	p.started = time.Now()
 	p.exitErr = nil
+	if id == "freellmapi" {
+		go a.syncFreeLLMAPIKey(cmd)
+	}
 	go func() {
 		err := cmd.Wait()
 		logf.Close()
@@ -275,4 +287,50 @@ func portOf(url, def string) string {
 		return u[i+1:]
 	}
 	return def
+}
+
+// syncFreeLLMAPIKey copia la clave unificada que FreeLLMAPI genera en su base
+// de datos a la configuración de Infinito, para que el chat pueda usarla.
+func (a *AppManager) syncFreeLLMAPIKey(cmd *exec.Cmd) {
+	db := filepath.Join(dataDir(), "data", "freellmapi", "freellmapi.db")
+	script := `const {DatabaseSync}=require("node:sqlite");` +
+		`const d=new DatabaseSync(process.argv[1],{readOnly:true});` +
+		`const r=d.prepare("SELECT value FROM settings WHERE key='unified_api_key'").get();` +
+		`if(r)process.stdout.write(r.value)`
+	for i := 0; i < 90; i++ {
+		time.Sleep(2 * time.Second)
+		p := a.proc("freellmapi")
+		p.mu.Lock()
+		alive := p.cmd == cmd
+		p.mu.Unlock()
+		if !alive {
+			return
+		}
+		if _, err := os.Stat(db); err != nil {
+			continue
+		}
+		var out []byte
+		var err error
+		for _, flags := range [][]string{nil, {"--experimental-sqlite"}} {
+			args := append(append(flags, "--no-warnings", "-e", script), db)
+			c := exec.Command(nodeBin(), args...)
+			c.Env = nodeEnv()
+			if out, err = c.Output(); err == nil {
+				break
+			}
+		}
+		key := strings.TrimSpace(string(out))
+		if err != nil || !strings.HasPrefix(key, "freellmapi-") {
+			continue
+		}
+		c := a.cfg
+		c.mu.Lock()
+		changed := c.FreeLLMAPI.APIKey != key
+		c.FreeLLMAPI.APIKey = key
+		c.mu.Unlock()
+		if changed {
+			_ = c.Save()
+		}
+		return
+	}
 }
