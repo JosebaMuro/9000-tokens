@@ -5,6 +5,12 @@ APK="$1"
 mkdir -p shots
 adb install -r -g "$APK"
 adb logcat -c
+# Diagnóstico: el binario por sí solo, con el usuario de la app.
+DIR=$(adb shell pm path app.infinito.tui | sed 's/package://;s/base.apk//' | tr -d '\r')
+LIB="${DIR}lib/x86_64/libinfinito.so"
+adb shell "ls -l $LIB"
+adb shell "run-as app.infinito.tui $LIB version"; echo "salida: $?"
+adb shell "run-as app.infinito.tui sh -c 'mkdir -p files/home files/config; cd files; HOME=\$PWD/home INFINITO_HOME=\$PWD/config INFINITO_DATA=\$PWD/infinito timeout 8 $LIB serve'" 2>&1 | head -20
 adb shell am start -W -n app.infinito.tui/.MainActivity
 sleep 20
 adb exec-out screencap -p > shots/1-inicio.png
@@ -25,5 +31,5 @@ adb exec-out screencap -p > shots/3-atras.png
 adb logcat -d > shots/logcat.txt || true
 echo "===== logcat (app) ====="
 PIDS=$(adb shell pidof app.infinito.tui || true)
-grep -E "app.infinito|Infinito|AndroidRuntime|FATAL|libinfinito|termux|DEBUG  " shots/logcat.txt | tail -150
+grep -E "app.infinito|Infinito|I Infinito|AndroidRuntime|FATAL|libinfinito|termux|DEBUG  " shots/logcat.txt | tail -150
 echo "$H" | grep -q '"ok":true'

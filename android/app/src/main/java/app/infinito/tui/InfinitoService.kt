@@ -159,8 +159,24 @@ class InfinitoService : Service(), TerminalSessionClient {
     override fun onTextChanged(changedSession: TerminalSession) { ui?.onTextChanged(changedSession) }
     override fun onTitleChanged(changedSession: TerminalSession) { ui?.onTitleChanged(changedSession) }
     override fun onSessionFinished(finishedSession: TerminalSession) {
-        ui?.onSessionFinished(finishedSession)
-        stopEverything()
+        val code = finishedSession.exitStatus
+        val text = runCatching { finishedSession.emulator?.screen?.transcriptText }.getOrNull().orEmpty()
+        Log.i(TAG, "Infinito terminó (código $code). Pantalla:\n" + text.takeLast(6000))
+        if (code == 0) {
+            ui?.onSessionFinished(finishedSession)
+            stopEverything()
+            return
+        }
+        // Si falla, dejamos el mensaje a la vista y un toque lo vuelve a abrir.
+        val msg = "\r\n\u001b[1;31m[Infinito se ha cerrado con un error (código $code). Toca la pantalla para reiniciarlo.]\u001b[0m\r\n"
+        runCatching { finishedSession.emulator?.append(msg.toByteArray(), msg.toByteArray().size) }
+        ui?.onTextChanged(finishedSession)
+    }
+
+    /** Arranca de nuevo Infinito tras un cierre con error. */
+    fun restartSession(): TerminalSession {
+        session = null
+        return ensureSession()
     }
     override fun onCopyTextToClipboard(session: TerminalSession, text: String?) {
         if (text.isNullOrEmpty()) return

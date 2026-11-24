@@ -166,6 +166,11 @@ class MainActivity : Activity(), ServiceConnection, TerminalViewClient, Terminal
     }
 
     override fun onSingleTapUp(e: MotionEvent?) {
+        val cur = service?.session
+        if (cur != null && !cur.isRunning) {
+            service?.let { terminal.attachSession(it.restartSession()); terminal.onScreenUpdated() }
+            return
+        }
         // Con el ratón activo, el toque ya llega a Infinito como clic.
         val em = service?.session?.emulator
         if (em == null || !em.isMouseTrackingActive) toggleKeyboard()
