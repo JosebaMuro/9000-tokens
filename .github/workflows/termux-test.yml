@@ -43,3 +43,40 @@ jobs:
           [ $ok = 1 ]
           SH
           docker run --rm --privileged -v "$PWD/d:/d" termux/termux-docker:aarch64 bash /d/test.sh
+
+  sin-termux:
+    # Como dentro del APK: sin las bibliotecas de Termux en /data/data/com.termux.
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Descargar binario
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir d && cd d
+          gh release download "${{ github.event.inputs.tag }}" -R "${{ github.repository }}" -p infinito-android-termux-arm64
+          chmod 755 infinito-android-termux-arm64
+      - name: Instalar y arrancar sin Termux
+        run: |
+          cat > d/test.sh <<'SH'
+          set -x
+          P=/data/data/com.termux/files/usr
+          A=/data/local/tmp/app; mkdir -p $A/home $A/cache
+          cp /d/infinito-android-termux-arm64 $A/libinfinito.so
+          espera() { read -t "$1" -u 3 3< <(read -t "$1"; echo); true; }
+          export HOME=$A/home TMPDIR=$A/cache INFINITO_HOME=$A/config INFINITO_DATA=$A/infinito INFINITO_ANDROID_APP=1
+          mv $P/lib $P/lib.off
+          (PATH=/system/bin:/system/xbin $A/libinfinito.so install > $A/install.log 2>&1)
+          (PATH=/system/bin:/system/xbin $A/libinfinito.so serve omniroute freellmapi > $A/serve.log 2>&1 &)
+          espera 150
+          mv $P/lib.off $P/lib
+          curl -s -m 20 -o /dev/null -w 'omniroute %{http_code}\n' http://127.0.0.1:20128/v1/models
+          curl -s -m 20 -o /dev/null -w 'freellmapi %{http_code}\n' http://127.0.0.1:3001/v1/models
+          curl -s -m 20 -w '\n' http://127.0.0.1:8686/health
+          tail -5 $A/install.log; tail -30 $A/serve.log
+          for l in $A/infinito/logs/*.log; do echo "--- $l"; tail -40 "$l"; done
+          LD_LIBRARY_PATH=$A/infinito/runtime/termux/usr/lib $A/infinito/runtime/termux/usr/bin/node -v
+          mv $P/lib $P/lib.off
+          LD_LIBRARY_PATH=$A/infinito/runtime/termux/usr/lib $A/infinito/runtime/termux/usr/bin/node -v 2> $A/node.err; mv $P/lib.off $P/lib; cat $A/node.err
+          ls $A/infinito/runtime/termux/usr/lib | head -80
+          SH
+          docker run --rm --privileged -v "$PWD/d:/d" termux/termux-docker:aarch64 bash /d/test.sh
