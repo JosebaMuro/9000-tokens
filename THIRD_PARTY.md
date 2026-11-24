@@ -12,3 +12,5 @@ modificar, estos programas con sus propias licencias:
 | FreeLLMAPI y sus dependencias npm | MIT (FreeLLMAPI) | https://github.com/tashfeenahmed/freellmapi |
 
 Claude Code no va incluido: es software de Anthropic con su propia licencia.
+
+- github.com/muesli/cancelreader (MIT): copia parcheada en third_party/cancelreader para usar epoll_pwait en Android.
