@@ -149,7 +149,7 @@ jobs:
           path: dist
           merge-multiple: true
       - name: Quitar archivos de prueba
-        run: rm -f dist/*.png dist/procesos.txt dist/health.txt dist/logcat.txt
+        run: rm -f dist/*.png dist/*.txt dist/*.xml
       - name: Sumas SHA-256
         run: cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
       - name: Publicar release
