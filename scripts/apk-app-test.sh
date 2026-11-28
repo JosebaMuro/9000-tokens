@@ -1,23 +1,26 @@
 #!/usr/bin/env bash
-# Instala el APK, lo abre pidiendo que arranque los dos repos y comprueba
-# que responden con la clave que Infinito les da.
+# Instala el APK (con el paquete offline), abre la GUI y comprueba que
+# FreeLLMAPI arranca dentro de la app y que el chat le llega.
 set -x
 adb install -r -g "$1" || exit 1
-adb shell am start -W -n app.infinito.tui/.MainActivity --es autostart omniroute,freellmapi
-adb forward tcp:18686 tcp:8686; adb forward tcp:20128 tcp:20128; adb forward tcp:13001 tcp:3001
-RA() { adb shell "run-as app.infinito.tui sh -c 'cd /data/data/app.infinito.tui/files && $1'"; }
+RA() { adb shell "run-as app.infinito.tui sh -c 'cd /data/data/app.infinito.tui && $1'"; }
+# Recordar la GUI para que se abra directamente.
+RA "mkdir -p shared_prefs && echo \"<?xml version='1.0' encoding='utf-8' standalone='yes' ?><map><string name=\\\"start\\\">gui</string></map>\" > shared_prefs/modo.xml"
+adb shell am start -W -n app.infinito.tui/.ChooserActivity
+adb forward tcp:18686 tcp:8686; adb forward tcp:13001 tcp:3001
 ok=0
 for i in $(seq 1 40); do
   sleep 15
-  C=$(RA "cat config/config.json" 2>/dev/null)
-  OK=$(echo "$C" | grep -o 'omr-[0-9a-f]*' | head -1); FK=$(echo "$C" | grep -o 'freellmapi-[0-9a-f]*' | head -1)
-  o=$(curl -s -m 10 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $OK" http://127.0.0.1:20128/v1/models)
-  f=$(curl -s -m 10 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $FK" http://127.0.0.1:13001/v1/models)
-  echo "intento $i: omniroute=$o freellmapi=$f"
-  RA "ls infinito/logs 2>/dev/null; tail -2 infinito/logs/omniroute.log infinito/logs/freellmapi.log 2>/dev/null"
-  [ "$o" = 200 ] && [ "$f" = 200 ] && { ok=1; break; }
+  PID=$(adb shell ps -A -o PID,ARGS | grep -E 'infinito (gui|tui)' | head -1 | awk '{print $1}')
+  TOK=$(RA "cat /proc/$PID/environ" | tr '\0' '\n' | grep INFINITO_GUI_TOKEN | cut -d= -f2 | tr -d '\r')
+  ST=$(curl -s -m 10 -H "X-Token: $TOK" http://127.0.0.1:18686/app/api/state)
+  echo "intento $i: $ST"
+  RA "tail -2 files/infinito/logs/freellmapi.log 2>/dev/null"
+  echo "$ST" | grep -q '"ok":true' && { ok=1; break; }
 done
-adb exec-out screencap -p > /dev/null
-RA "for f in infinito/logs/*.log; do echo \"--- \$f\"; tail -80 \$f; done"
-adb logcat -d | grep -E "Infinito|libinfinito|node|avc: denied|SIGSYS|seccomp" | tail -80
+curl -s -m 60 -N -H "X-Token: $TOK" -X POST -d '{"text":"Hola"}' http://127.0.0.1:18686/app/api/chat | head -5
+curl -s -m 10 -H "X-Token: $TOK" http://127.0.0.1:18686/app/api/history | head -c 600; echo
+adb shell uiautomator dump /sdcard/ui.xml >/dev/null; adb shell cat /sdcard/ui.xml | grep -o 'text="[^"]*"' | grep -v 'text=""' | head -40
+RA "for f in files/infinito/logs/*.log; do echo \"--- \$f\"; tail -60 \$f; done"
+adb logcat -d | grep -E "Infinito|libinfinito|node|avc: denied|SIGSYS|seccomp|AndroidRuntime" | tail -80
 [ $ok = 1 ]

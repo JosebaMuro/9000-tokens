@@ -1,47 +1,51 @@
 # Infinito: cómo funciona
 
-Infinito es un único programa que no necesita internet para instalarse.
-La versión completa lleva dentro:
+Infinito es un chat de IA gratis que usa FreeLLMAPI como motor. Es un
+único programa que no necesita internet para instalarse: la versión
+completa lleva dentro Node.js y FreeLLMAPI listos para descomprimir.
 
-- Node.js, OmniRoute y FreeLLMAPI ya instalados, listos para descomprimir.
-- Su propia pasarela integrada (puerto 8686), compatible con la API de
-  OpenAI (/v1/chat/completions) y con la de Anthropic (/v1/messages). Junta
-  los planes gratis de varios proveedores y, cuando uno llega a su límite,
-  salta al siguiente.
+Tiene dos interfaces con la misma conversación:
 
-Todo se maneja con el ratón, el panel táctil o el dedo (en Termux), o con
-el teclado.
+- Aplicación (GUI): ventana visual estilo app de móvil. En el PC se abre en
+  el navegador; en la app de Android, a pantalla completa.
+- Terminal (TUI): todo dentro de la terminal, con ratón, dedo o teclado.
+
+Al abrir Infinito eliges una. Si marcas "Recordar mi elección", la próxima
+vez entra directamente (se cambia en Ajustes).
 
 ## Primeros pasos
 
-1. Pestaña Inicio: pulsa "Instalar todo". Tarda uno o dos minutos y solo
-   se hace una vez.
-2. Elige qué pasarela quieres usar y pulsa "Arrancar":
-   - Pasarela integrada: pon tus claves en la pestaña Proveedores.
-   - OmniRoute o FreeLLMAPI: pulsa "Panel web" y añade allí tus claves.
-     Luego copia su clave en la pestaña Ajustes.
-3. Pulsa "Usar en el chat" en la que quieras y escribe en la pestaña Chat.
-   Puedes cambiar de pasarela en mitad de la conversación con los botones
-   de arriba del chat: no se pierde nada.
-4. Pestaña Claude Code para abrir Claude Code conectado a la que elijas.
+1. La primera vez, Infinito instala y arranca FreeLLMAPI solo. Lo ves en
+   la pestaña Inicio.
+2. Escribe en el Chat. Con el modelo "auto", FreeLLMAPI elige el mejor
+   proveedor gratuito que esté libre.
+3. Si no responde ningún proveedor, abre el panel web de FreeLLMAPI
+   (Inicio → Panel web) y añade una clave gratuita (guía "Claves gratis").
 
-## Usar la pasarela integrada desde otras herramientas
+## Archivos y multimedia
 
-    URL OpenAI:     http://127.0.0.1:8686/v1
-    URL Anthropic:  http://127.0.0.1:8686
-    Clave:          la de la pestaña Ajustes
-    Modelo:         auto (o proveedor/modelo, p. ej. groq/llama-3.3-70b-versatile)
+Desde el chat puedes:
 
-Sin interfaz (por ejemplo, para dejarlo en segundo plano):
+- Crear imágenes, vídeo o voz (si FreeLLMAPI tiene un proveedor que lo
+  haga): en la GUI con el botón +, en la TUI con los botones o con
+  /imagen, /video y /voz seguidos de la descripción.
+- Guardar la última respuesta (.md), su código (cada bloque en su archivo,
+  .py, .js, .html…) o la conversación entera.
 
-    infinito serve                         solo la pasarela integrada
-    infinito serve omniroute freellmapi    y además los dos repos
+Todo queda en la pestaña Archivos y en la carpeta Infinito de tu usuario
+(Documentos\Infinito en Windows, Descargas/Infinito en Termux).
+
+## Sin interfaz
+
+    infinito serve          solo FreeLLMAPI, para usar su API (puerto 3001)
+    infinito gui --no-open  la GUI sin abrir el navegador
 
 ## Dónde se guarda todo
 
-    Configuración y claves:  ~/.config/infinito/config.json
+    Configuración:           ~/.config/infinito/config.json
                              (Windows: %APPDATA%\infinito\config.json)
     Conversación del chat:   la misma carpeta, chat.json
     Programas instalados:    ~/.infinito  (Windows: %LOCALAPPDATA%\infinito)
 
-Puedes cambiar las carpetas con INFINITO_HOME e INFINITO_DATA.
+Puedes cambiar las carpetas con INFINITO_HOME, INFINITO_DATA e
+INFINITO_FILES.

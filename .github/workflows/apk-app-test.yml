@@ -1,5 +1,5 @@
 name: apk-app-test
-# Prueba OmniRoute y FreeLLMAPI arrancados DENTRO de la app Android (con sus
+# Prueba FreeLLMAPI y la GUI arrancados DENTRO de la app Android (con sus
 # restricciones reales), en un emulador x86_64: el paquete del release de
 # Termux con Node de Termux para x86_64.
 on:

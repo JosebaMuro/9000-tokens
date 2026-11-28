@@ -23,13 +23,6 @@ func v1(base string) string {
 	return base + "/v1"
 }
 
-func apiBase(url string, isProvider bool) string {
-	if isProvider {
-		return strings.TrimRight(url, "/")
-	}
-	return v1(url)
-}
-
 // listModels pide /models a una URL base ya completa (…/v1).
 func listModels(ctx context.Context, base, key string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -116,9 +109,6 @@ func chatStream(ctx context.Context, base, key, model string, msgs []chatMsg) <-
 		}
 		defer resp.Body.Close()
 		route := resp.Header.Get("X-Infinito-Route")
-		if route == "" {
-			route = resp.Header.Get("X-Omniroute-Provider")
-		}
 		if resp.StatusCode/100 != 2 {
 			b, _ := io.ReadAll(io.LimitReader(resp.Body, 8<<10))
 			msg := string(b)
@@ -208,19 +198,12 @@ func chatStream(ctx context.Context, base, key, model string, msgs []chatMsg) <-
 	return ch
 }
 
-// testProvider hace una petición mínima a un proveedor.
-func testProvider(ctx context.Context, p Provider) (string, error) {
-	if len(p.Models) == 0 {
-		return "", fmt.Errorf("sin modelos")
+// short recorta un texto largo para mensajes de error.
+func short(s string, n int) string {
+	s = strings.TrimSpace(s)
+	r := []rune(s)
+	if len(r) <= n {
+		return s
 	}
-	ctx, cancel := context.WithTimeout(ctx, 40*time.Second)
-	defer cancel()
-	var sb strings.Builder
-	for ev := range chatStream(ctx, p.BaseURL, p.APIKey, p.Models[0], []chatMsg{{Role: "user", Content: "Responde solo: OK"}}) {
-		if ev.Err != nil {
-			return "", ev.Err
-		}
-		sb.WriteString(ev.Delta)
-	}
-	return short(sb.String(), 60), nil
+	return string(r[:n]) + "…"
 }

@@ -1,4 +1,10 @@
-Infinito: TUI para OmniRoute y FreeLLMAPI que funciona sin internet.
+Infinito: chat de IA gratis con FreeLLMAPI, con interfaz gráfica (GUI) y de terminal (TUI), que se instala sin internet.
+
+Novedades de la 1.2.0:
+
+- Al abrir eliges la GUI (estilo app Android moderna) o la TUI. Comparten la conversación.
+- El chat usa FreeLLMAPI. Desde el chat creas imágenes, vídeo y voz, guardas respuestas y código en archivos y exportas la conversación. Nueva pestaña Archivos.
+- Se quitan OmniRoute, la pasarela integrada y el lanzador de Claude Code.
 
 ## Qué descargar
 
@@ -10,18 +16,17 @@ Infinito: TUI para OmniRoute y FreeLLMAPI que funciona sin internet.
 | Linux ARM64 | `infinito-linux-arm64` | `infinito-linux-arm64-ligero` |
 | Android (Termux) | `infinito-android-termux-arm64` | `infinito-android-termux-arm64-ligero` |
 
-- **Completa**: lleva dentro Node.js, OmniRoute y FreeLLMAPI ya instalados.
-  Pulsa *Instalar todo* en la pestaña Inicio y funcionan sin conexión.
-- **Ligera**: solo la interfaz y la pasarela integrada (unos 10 MB). Sirve
-  para usar la pasarela integrada o un OmniRoute/FreeLLMAPI que ya tengas.
+- **Completa**: lleva dentro Node.js y FreeLLMAPI. La primera vez se
+  instalan y arrancan solos, sin conexión.
+- **Ligera**: solo Infinito (unos 10 MB), para usar un FreeLLMAPI que ya
+  tengas (cambia la URL en Ajustes).
 
 **Android, lo más fácil**: descarga `infinito-android-arm64.apk` en el móvil
-y ábrelo (Android te pedirá permitir instalar apps de esta fuente). Es una
-app normal con su propia terminal: no hace falta Termux. Necesita unos 2 GB
+y ábrelo (Android te pedirá permitir instalar apps de esta fuente). Al abrirla
+eliges la app visual o la terminal: no hace falta Termux. Necesita unos 2 GB
 libres. No está en Google Play.
 
 En Linux y Termux: `chmod +x infinito-*` y ejecútalo. En Windows, ábrelo
 desde Windows Terminal. Comprueba la descarga con `SHA256SUMS.txt`.
 
 El soporte de Android es experimental, igual que en los propios repos.
-Claude Code no va incluido: instálalo con `npm install -g @anthropic-ai/claude-code`.

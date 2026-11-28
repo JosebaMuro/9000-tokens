@@ -66,8 +66,6 @@ func nodeInstalled() bool {
 func appEntry(id string) string {
 	d := filepath.Join(dataDir(), "apps")
 	switch id {
-	case "omniroute":
-		return filepath.Join(d, "omniroute", "node_modules", "omniroute", "bin", "omniroute.mjs")
 	case "freellmapi":
 		return filepath.Join(d, "freellmapi", "server", "dist", "index.js")
 	}
@@ -155,21 +153,6 @@ func (a *AppManager) Start(id string) error {
 	env := nodeEnv()
 	var dir string
 	switch id {
-	case "omniroute":
-		data := filepath.Join(dataDir(), "data", "omniroute")
-		_ = os.MkdirAll(data, 0o700)
-		args = []string{appEntry(id), "serve", "--port", portOf(c.OmniRoute.URL, "20128"), "--no-open"}
-		// OmniRoute pide clave en /v1: le damos una fija (OMNIROUTE_API_KEY)
-		// y la usa el chat de Infinito sin que el usuario tenga que crearla.
-		c.mu.Lock()
-		if c.OmniRoute.APIKey == "" {
-			c.OmniRoute.APIKey = "omr-" + randHex(16)
-		}
-		okey := c.OmniRoute.APIKey
-		c.mu.Unlock()
-		_ = c.Save()
-		env = append(env, "DATA_DIR="+data, "OMNIROUTE_SERVER_HOST=127.0.0.1", "OMNIROUTE_SKIP_POSTINSTALL=1", "OMNIROUTE_API_KEY="+okey)
-		dir = data
 	case "freellmapi":
 		data := filepath.Join(dataDir(), "data", "freellmapi")
 		_ = os.MkdirAll(data, 0o700)
@@ -240,7 +223,7 @@ func (a *AppManager) Stop(id string) {
 }
 
 func (a *AppManager) StopAll() {
-	for _, id := range []string{"omniroute", "freellmapi"} {
+	for _, id := range []string{"freellmapi"} {
 		a.Stop(id)
 	}
 }
@@ -282,12 +265,10 @@ func stripANSI(s string) string {
 
 func appName(id string) string {
 	switch id {
-	case "omniroute":
-		return "OmniRoute"
 	case "freellmapi":
 		return "FreeLLMAPI"
 	}
-	return "Pasarela integrada"
+	return id
 }
 
 func portOf(url, def string) string {

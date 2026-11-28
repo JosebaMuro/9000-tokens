@@ -2,7 +2,6 @@ package main
 
 import (
 	"archive/tar"
-	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -10,17 +9,15 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync/atomic"
-	"time"
 
 	"github.com/klauspost/compress/zstd"
 )
 
-// El paquete offline (Node + OmniRoute + FreeLLMAPI) va pegado al final del
+// El paquete offline (Node + FreeLLMAPI) va pegado al final del
 // propio ejecutable: [binario][tar.zst][16 bytes: "INFPACK1" + offset].
 
 const packMagic = "INFPACK1"
@@ -174,7 +171,7 @@ func (c countingReader) Read(p []byte) (int, error) {
 }
 
 // installPack descomprime el paquete en dataDir(). Solo los componentes
-// pedidos ("runtime", "omniroute", "freellmapi"); vacío = todos.
+// pedidos ("runtime", "freellmapi"); vacío = todos.
 func installPack(pr *progress, only map[string]bool) error {
 	path, off, size, err := findPack()
 	if err != nil {
@@ -196,7 +193,8 @@ func installPack(pr *progress, only map[string]bool) error {
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		return err
 	}
-	// Borra versiones anteriores de lo que se va a instalar.
+	// Borra versiones anteriores de lo que se va a instalar (y OmniRoute,
+	// que venía en versiones antiguas).
 	for _, comp := range []string{"runtime", "apps/omniroute", "apps/freellmapi"} {
 		key := strings.TrimPrefix(comp, "apps/")
 		if len(only) == 0 || only[key] {
@@ -265,33 +263,7 @@ func installPack(pr *progress, only map[string]bool) error {
 		}
 	}
 	pr.done.Store(size)
-	postInstall(only)
 	return nil
-}
-
-// postInstall: en Termux, OmniRoute ajusta sus módulos nativos en el propio
-// dispositivo (sin internet; si algo falla, usa sus alternativas en JS).
-func postInstall(only map[string]bool) {
-	if !isTermuxRuntime() || (len(only) > 0 && !only["omniroute"]) {
-		return
-	}
-	dir := filepath.Join(dataDir(), "apps", "omniroute", "node_modules", "omniroute")
-	script := filepath.Join(dir, "scripts", "build", "postinstall.mjs")
-	if _, err := os.Stat(script); err != nil {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Minute)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, nodeBin(), script)
-	cmd.Dir = dir
-	cmd.Env = append(nodeEnv(), "npm_config_offline=true")
-	logPath := filepath.Join(dataDir(), "logs", "postinstall.log")
-	_ = os.MkdirAll(filepath.Dir(logPath), 0o755)
-	if f, err := os.Create(logPath); err == nil {
-		cmd.Stdout, cmd.Stderr = f, f
-		defer f.Close()
-	}
-	_ = cmd.Run()
 }
 
 func copyFile(src, dst string) error {

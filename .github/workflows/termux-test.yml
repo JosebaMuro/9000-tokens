@@ -28,15 +28,14 @@ jobs:
           B=/d/infinito-android-termux-arm64
           $B version
           $B install
-          ( $B serve omniroute freellmapi > serve.log 2>&1 & )
+          ( INFINITO_GUI_TOKEN=prueba $B gui --no-open > serve.log 2>&1 & )
           ok=0
           for i in $(seq 1 60); do
             sleep 3
-            o=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:20128/v1/models)
             f=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/v1/models)
-            g=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8686/health)
-            echo "intento $i: omniroute=$o freellmapi=$f integrada=$g"
-            if [ "$o" != 000 ] && [ "$f" != 000 ] && [ "$g" = 200 ]; then ok=1; break; fi
+            st=$(curl -s -H 'X-Token: prueba' http://127.0.0.1:8686/app/api/state)
+            echo "intento $i: freellmapi=$f gui=$st"
+            if echo "$st" | grep -q '"ok":true'; then ok=1; break; fi
           done
           tail -20 serve.log
           for l in ~/.infinito/logs/*.log; do echo "--- $l"; tail -30 "$l"; done
@@ -72,16 +71,15 @@ jobs:
           echo "== install"; PATH=/system/bin:/system/xbin $A/libinfinito.so install > $A/install.log 2>&1; echo "salida $?"
           ultimas $A/install.log 5
           LD_LIBRARY_PATH=$A/infinito/runtime/termux/usr/lib $A/infinito/runtime/termux/usr/bin/node -v; echo "node salida $?"
-          (PATH=/system/bin:/system/xbin exec $A/libinfinito.so serve omniroute freellmapi > $A/serve.log 2>&1) &
+          (PATH=/system/bin:/system/xbin exec $A/libinfinito.so gui --no-open > $A/serve.log 2>&1) &
           for i in 1 2 3 4 5 6 7 8; do
             read -t 20 <> $A/f
-            C=$(<$A/config/config.json); OK=; FK=
-            [[ $C =~ (omr-[0-9a-f]+) ]] && OK=${BASH_REMATCH[1]}
+            C=$(<$A/config/config.json); FK=
             [[ $C =~ (freellmapi-[0-9a-f]+) ]] && FK=${BASH_REMATCH[1]}
-            hget 20128 /v1/models "$OK"; hget 3001 /v1/models "$FK"
+            hget 3001 /v1/models "$FK"
           done
-          [[ -n $OK && -n $FK ]] && echo "claves: omniroute y freellmapi configuradas"
-          hget 8686 /health
+          [[ -n $FK ]] && echo "clave de freellmapi configurada"
+          hget 8686 /app/
           echo "== serve.log"; ultimas $A/serve.log 30
           for l in $A/infinito/logs/*.log; do echo "--- $l"; ultimas "$l" 50; done
           mv $P/lib.off $P/lib

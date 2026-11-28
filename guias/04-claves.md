@@ -1,8 +1,8 @@
 # Dónde sacar claves gratis
 
 Las claves gratis se sacan en un par de minutos en la web de cada
-proveedor. En la pestaña Proveedores, la columna de la derecha muestra el
-enlace de cada uno.
+proveedor. Se ponen en el panel web de FreeLLMAPI (Inicio → Panel web →
+Keys); el chat de Infinito las usa solo.
 
     Groq           console.groq.com/keys
     Google Gemini  aistudio.google.com/apikey
@@ -17,9 +17,6 @@ enlace de cada uno.
     Z.ai           z.ai/manage-apikey/apikey-list
     SiliconFlow    cloud.siliconflow.com/account/ak
     Ollama Cloud   ollama.com/settings/keys
-
-Con la tecla f, Infinito descarga la lista de modelos del proveedor
-seleccionado para que elijas los que quieras usar.
 
 ## Antes de empezar
 

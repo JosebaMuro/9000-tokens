@@ -38,40 +38,6 @@ func loadGuides() []guide {
 	return out
 }
 
-// claudeEnv: variables para que Claude Code use una pasarela.
-func claudeEnv(baseURL, key, model string) []string {
-	env := []string{
-		"ANTHROPIC_BASE_URL=" + strings.TrimSuffix(strings.TrimRight(baseURL, "/"), "/v1"),
-		"ANTHROPIC_AUTH_TOKEN=" + key,
-		"CLAUDE_CODE_AUTO_MODE_SERVER=0",
-		"DISABLE_TELEMETRY=1",
-		"CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1",
-	}
-	if model != "" {
-		env = append(env, "ANTHROPIC_MODEL="+model, "ANTHROPIC_SMALL_FAST_MODEL="+model,
-			"ANTHROPIC_DEFAULT_HAIKU_MODEL="+model)
-	}
-	return env
-}
-
-func envScript(env []string) string {
-	var sb strings.Builder
-	if runtime.GOOS == "windows" {
-		sb.WriteString("# PowerShell\n")
-		for _, e := range env {
-			k, v, _ := strings.Cut(e, "=")
-			fmt.Fprintf(&sb, "$env:%s = \"%s\"\n", k, v)
-		}
-	} else {
-		for _, e := range env {
-			k, v, _ := strings.Cut(e, "=")
-			fmt.Fprintf(&sb, "export %s='%s'\n", k, v)
-		}
-	}
-	sb.WriteString("claude\n")
-	return sb.String()
-}
-
 func which(name string) string {
 	p, err := exec.LookPath(name)
 	if err != nil {
@@ -80,30 +46,7 @@ func which(name string) string {
 	return p
 }
 
-// claudeCmd prepara Claude Code con las variables dadas.
-func claudeCmd(env []string, args ...string) (*exec.Cmd, error) {
-	bin := which("claude")
-	if bin == "" {
-		return nil, fmt.Errorf("no encuentro el comando 'claude'. Instálalo con: npm install -g @anthropic-ai/claude-code")
-	}
-	cmd := exec.Command(bin, args...)
-	cmd.Env = append(os.Environ(), env...)
-	return cmd, nil
-}
-
-func omnirouteRunCmd(model string) (*exec.Cmd, error) {
-	bin := which("omniroute")
-	if bin == "" {
-		return nil, fmt.Errorf("no encuentro 'omniroute'. Instálalo con: npm install -g omniroute (guía en la pestaña Guías)")
-	}
-	args := []string{"run", "claude"}
-	if model != "" {
-		args = append(args, "--model", model)
-	}
-	return exec.Command(bin, args...), nil
-}
-
-// startDetached arranca un programa en segundo plano (p. ej. omniroute).
+// startDetached arranca un programa en segundo plano.
 func startDetached(name string, args ...string) error {
 	bin := which(name)
 	if bin == "" {
@@ -131,6 +74,8 @@ func openURL(url string) error {
 		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", url)
 	case runtime.GOOS == "darwin":
 		cmd = exec.Command("open", url)
+	case isTermux() && !strings.Contains(url, "://") && which("termux-open") != "":
+		cmd = exec.Command("termux-open", url)
 	case isTermux() && which("termux-open-url") != "":
 		cmd = exec.Command("termux-open-url", url)
 	case which("xdg-open") != "":

@@ -1,23 +1,18 @@
 # 9000 tokens · Infinito
 
-Interfaz de terminal (TUI) para usar **OmniRoute** y **FreeLLMAPI**, los dos
-repos que juntan los planes gratis de decenas de proveedores de IA detrás de
-un solo endpoint, en Windows, Linux y Android (Termux).
+Chat de IA gratis que usa **FreeLLMAPI** como motor (el repo que junta los
+planes gratis de decenas de proveedores detrás de un solo endpoint), con
+interfaz gráfica (GUI) y de terminal (TUI), en Windows, Linux y Android.
 
-- **Sin internet para instalar**: la versión completa lleva dentro Node.js,
-  OmniRoute y FreeLLMAPI ya instalados. Un clic en *Instalar todo* y listo.
-- **Eliges cuál lanzar**: arranca, para y cambia entre OmniRoute, FreeLLMAPI
-  y la pasarela integrada desde la pestaña Inicio.
-- **Chat sin perder la conversación**: cambia de pasarela en mitad de una
-  conversación y la siguiente respuesta la da la nueva. La conversación se
-  guarda en disco.
-- **Pasarela integrada en Go**: compatible con la API de OpenAI y con la de
-  Anthropic, con cadena de respaldo entre 15 proveedores gratis (Groq,
-  Gemini, Cerebras, OpenRouter, Mistral, NVIDIA…). Sirve a Claude Code
-  directamente.
-- **Ratón, panel táctil y pantalla táctil**: todas las pestañas, botones y
-  listas se pueden pulsar. También funciona con teclado.
-- **Lanza Claude Code** conectado a la pasarela que elijas.
+- **Sin internet para instalar**: la versión completa lleva dentro Node.js y
+  FreeLLMAPI. La primera vez se instala y arranca solo.
+- **GUI o TUI al abrir**: la GUI es una app visual estilo Android moderno (en
+  el PC se abre en el navegador; en el APK, a pantalla completa). La TUI es
+  la de terminal. Las dos comparten la misma conversación.
+- **Archivos y multimedia**: desde el chat creas imágenes, vídeo y voz con
+  FreeLLMAPI, guardas respuestas y su código en archivos y exportas la
+  conversación. Todo queda en la pestaña Archivos.
+- **Ratón, panel táctil y pantalla táctil** en la TUI; también teclado.
 
 Recursos originales: <https://antonspain-ia-recursos.surge.sh/infinito/>
 
@@ -33,9 +28,10 @@ En [Releases](../../releases) hay dos versiones por sistema:
 | Linux ARM64 | `infinito-linux-arm64` | `infinito-linux-arm64-ligero` |
 | Android (Termux) | `infinito-android-termux-arm64` | `infinito-android-termux-arm64-ligero` |
 
-En Android, lo más fácil es el APK: se instala como cualquier app, trae su
-propia terminal con teclas extra (Esc, Tab, Ctrl, flechas, zoom) y sigue
-funcionando en segundo plano. Se instala fuera de Google Play.
+En Android, lo más fácil es el APK: se instala como cualquier app, al abrirlo
+eliges la app visual o la terminal (con teclas extra: Esc, Tab, Ctrl,
+flechas, zoom) y sigue funcionando en segundo plano. Se instala fuera de
+Google Play.
 
 ```bash
 chmod +x infinito-linux-x64
@@ -45,35 +41,37 @@ chmod +x infinito-linux-x64
 ## Uso
 
 ```
-infinito                               interfaz
-infinito install                       instala el paquete offline sin abrir la interfaz
-infinito serve [omniroute] [freellmapi] pasarela integrada (y los repos) en segundo plano
-infinito claude                        Claude Code conectado a la pasarela integrada
-infinito env                           variables para conectar Claude Code a mano
+infinito                 pregunta si abrir la GUI o la TUI
+infinito gui [--no-open] interfaz gráfica (http://127.0.0.1:8686/app/)
+infinito tui             interfaz de terminal
+infinito serve           solo FreeLLMAPI, para usar su API en :3001
+infinito install         instala el paquete offline sin abrir la interfaz
 ```
 
-Pasarela integrada: `http://127.0.0.1:8686/v1` (OpenAI) y
-`http://127.0.0.1:8686` (Anthropic), modelo `auto`, clave en Ajustes.
+Los archivos que crea el chat se guardan en la carpeta `Infinito` de tu
+usuario (`Documentos\Infinito` en Windows).
 
 Las guías completas están dentro del programa, en la pestaña **Guías**, y en
 la carpeta [`guias/`](guias/).
 
 ## Cómo está hecho
 
-- Un solo binario en Go (estático, sin dependencias) por plataforma. La
-  interfaz usa Bubble Tea.
+- Un solo binario en Go (estático, sin dependencias) por plataforma. La TUI
+  usa Bubble Tea; la GUI es una página web incluida en el binario que sirve
+  él mismo solo en 127.0.0.1, protegida con una clave por sesión.
 - La versión completa es ese binario con un paquete `tar.zst` pegado al
   final. Al instalar se descomprime en `~/.infinito` (Windows:
   `%LOCALAPPDATA%\infinito`).
 - En Android el paquete lleva el Node.js de Termux y sus bibliotecas en una
   carpeta propia, sin tocar los paquetes del sistema.
-- La app de Android (carpeta [`android/`](android/)) usa la terminal de
-  Termux (Apache 2.0) y lleva el binario de Termux como librería nativa.
+- La app de Android (carpeta [`android/`](android/)) tiene una pantalla de
+  elección nativa, muestra la GUI en un WebView y la TUI con la terminal de
+  Termux (Apache 2.0). Lleva el binario de Termux como librería nativa.
   Apunta a la API 28 para poder ejecutar Node.js desde su carpeta, como
   Termux; por eso no puede publicarse en Google Play.
 - El flujo [`release.yml`](.github/workflows/release.yml) compila cada
   paquete en su propio sistema (Windows, Linux x64, Linux ARM64), lo prueba
-  arrancando OmniRoute y FreeLLMAPI, y publica el release al subir una
+  arrancando FreeLLMAPI y la GUI, y publica el release al subir una
   etiqueta `v*`.
 
 Compilar a mano:

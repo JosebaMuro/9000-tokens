@@ -1,0 +1,733 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#1c1b22">
+<title>Infinito</title>
+<style>
+:root{
+  --primary:#5b3fd6; --on-primary:#fff; --primary-c:#e7deff; --on-primary-c:#1d0b5c;
+  --secondary-c:#e6e0f3; --on-secondary-c:#1e1a2b;
+  --surface:#fdf8ff; --surface-1:#f6f1fb; --surface-2:#f0eaf7; --surface-3:#e9e3f1;
+  --on-surface:#1c1b22; --on-surface-v:#48454f; --outline:#79757f; --outline-v:#cac4d0;
+  --error:#b3261e; --error-c:#f9dedc; --on-error-c:#410e0b; --ok:#1b7f3b; --warn:#9a6400;
+  --user-bubble:#5b3fd6; --on-user-bubble:#fff; --scrim:rgba(0,0,0,.4);
+  --code-bg:#ece6f5;
+  --r-s:12px; --r-m:16px; --r-l:28px;
+  --nav-h:80px;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme=light]){
+    --primary:#c9b8ff; --on-primary:#2f1a86; --primary-c:#46309e; --on-primary-c:#e7deff;
+    --secondary-c:#4a4458; --on-secondary-c:#e8def8;
+    --surface:#141218; --surface-1:#1d1b22; --surface-2:#221f28; --surface-3:#2b2832;
+    --on-surface:#e6e0ea; --on-surface-v:#cac4d0; --outline:#938f99; --outline-v:#49454f;
+    --error:#f2b8b5; --error-c:#8c1d18; --on-error-c:#f9dedc; --ok:#7bd88f; --warn:#f6c453;
+    --user-bubble:#46309e; --on-user-bubble:#efe9ff; --scrim:rgba(0,0,0,.6);
+    --code-bg:#0f0e13;
+    color-scheme:dark;
+  }
+}
+:root[data-theme=dark]{
+    --primary:#c9b8ff; --on-primary:#2f1a86; --primary-c:#46309e; --on-primary-c:#e7deff;
+    --secondary-c:#4a4458; --on-secondary-c:#e8def8;
+    --surface:#141218; --surface-1:#1d1b22; --surface-2:#221f28; --surface-3:#2b2832;
+    --on-surface:#e6e0ea; --on-surface-v:#cac4d0; --outline:#938f99; --outline-v:#49454f;
+    --error:#f2b8b5; --error-c:#8c1d18; --on-error-c:#f9dedc; --ok:#7bd88f; --warn:#f6c453;
+    --user-bubble:#46309e; --on-user-bubble:#efe9ff; --scrim:rgba(0,0,0,.6);
+    --code-bg:#0f0e13;
+    color-scheme:dark;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;margin:0}
+body{background:var(--surface);color:var(--on-surface);font:16px/1.5 Roboto,"Segoe UI",system-ui,-apple-system,sans-serif;overflow:hidden}
+button,input,textarea,select{font:inherit;color:inherit}
+svg.i{width:24px;height:24px;fill:currentColor;flex:none}
+.app{display:flex;flex-direction:column-reverse;height:100%;height:100dvh}
+.main{flex:1;display:flex;min-height:0}
+.page{flex:1;display:none;flex-direction:column;min-height:0;min-width:0}
+.page.on{display:flex}
+.top{display:flex;align-items:center;gap:8px;height:64px;padding:0 8px 0 16px;flex:none;background:var(--surface)}
+.top h1{font-size:22px;font-weight:400;margin:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.scroll{flex:1;overflow-y:auto;overscroll-behavior:contain;padding:0 16px 24px}
+.wrap{max-width:860px;margin:0 auto;width:100%}
+
+/* Botones */
+.ib{width:48px;height:48px;border:0;background:transparent;border-radius:50%;display:inline-grid;place-items:center;cursor:pointer;color:var(--on-surface-v)}
+.ib:hover{background:color-mix(in srgb,var(--on-surface) 8%,transparent)}
+.btn{height:40px;padding:0 24px;border-radius:20px;border:0;cursor:pointer;display:inline-flex;align-items:center;gap:8px;font-weight:500;font-size:14px;letter-spacing:.1px;white-space:nowrap}
+.btn svg.i{width:18px;height:18px}
+.filled{background:var(--primary);color:var(--on-primary)}
+.tonal{background:var(--secondary-c);color:var(--on-secondary-c)}
+.outlined{background:transparent;border:1px solid var(--outline);color:var(--primary)}
+.text{background:transparent;color:var(--primary);padding:0 12px}
+.danger{background:var(--error-c);color:var(--on-error-c)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn:not(:disabled):active,.ib:active{transform:scale(.97)}
+.chip{height:32px;border-radius:8px;border:1px solid var(--outline-v);background:transparent;display:inline-flex;align-items:center;gap:6px;padding:0 8px 0 12px;font-size:14px;cursor:pointer;max-width:55vw}
+.chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip svg.i{width:18px;height:18px}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+
+/* Navegación */
+.nav{display:flex;height:var(--nav-h);background:var(--surface-2);flex:none;padding-bottom:env(safe-area-inset-bottom)}
+.nav button{flex:1;border:0;background:transparent;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;font-size:12px;font-weight:500;color:var(--on-surface-v);cursor:pointer}
+.nav .pill{width:64px;height:32px;border-radius:16px;display:grid;place-items:center;transition:background .2s}
+.nav button.on{color:var(--on-surface)}
+.nav button.on .pill{background:var(--secondary-c);color:var(--on-secondary-c)}
+@media (min-width:840px){
+  .app{flex-direction:row}
+  .nav{flex-direction:column;width:88px;height:auto;justify-content:flex-start;padding-top:72px;gap:12px}
+  .nav button{flex:none;height:64px}
+}
+
+/* Chat */
+.msgs{flex:1;overflow-y:auto;padding:8px 16px 16px;overscroll-behavior:contain}
+.msg{display:flex;flex-direction:column;margin:10px 0;max-width:860px;margin-left:auto;margin-right:auto}
+.bubble{max-width:min(85%,680px);padding:10px 16px;border-radius:20px;overflow-wrap:anywhere}
+.user{align-items:flex-end}
+.user .bubble{background:var(--user-bubble);color:var(--on-user-bubble);border-bottom-right-radius:6px;white-space:pre-wrap}
+.bot .bubble{background:var(--surface-2);border-bottom-left-radius:6px;max-width:min(100%,760px)}
+.err .bubble{background:var(--error-c);color:var(--on-error-c)}
+.meta{font-size:12px;color:var(--on-surface-v);margin:4px 8px;display:flex;align-items:center;gap:2px;flex-wrap:wrap}
+.meta .ib{width:32px;height:32px}
+.meta .ib svg.i{width:18px;height:18px}
+.bubble p{margin:.35em 0}.bubble p:first-child{margin-top:0}.bubble p:last-child{margin-bottom:0}
+.bubble h1,.bubble h2,.bubble h3,.bubble h4{margin:.6em 0 .3em;line-height:1.3}
+.bubble h1{font-size:1.3em}.bubble h2{font-size:1.18em}.bubble h3,.bubble h4{font-size:1.05em}
+.bubble ul,.bubble ol{margin:.3em 0;padding-left:1.4em}
+.bubble a{color:var(--primary)}
+.bubble code{font-family:ui-monospace,"Cascadia Mono",Menlo,Consolas,monospace;font-size:.88em;background:var(--code-bg);padding:.1em .35em;border-radius:6px}
+.codeblk{margin:.6em 0;border-radius:12px;overflow:hidden;background:var(--code-bg);border:1px solid var(--outline-v)}
+.codeblk header{display:flex;align-items:center;justify-content:space-between;padding:2px 4px 2px 12px;font-size:12px;color:var(--on-surface-v);border-bottom:1px solid var(--outline-v)}
+.codeblk header button{border:0;background:transparent;color:var(--primary);font-size:12px;font-weight:500;padding:6px 8px;cursor:pointer;border-radius:8px}
+.codeblk pre{margin:0;padding:12px;overflow-x:auto;font-size:13px;line-height:1.45}
+.codeblk pre code{background:none;padding:0}
+.media{display:flex;flex-direction:column;gap:8px}
+.media img{max-width:100%;max-height:60vh;border-radius:14px;display:block;cursor:zoom-in;background:var(--surface-3)}
+.media video{max-width:100%;border-radius:14px;background:#000}
+.media audio{width:min(100%,360px)}
+.fname{font-size:12px;color:var(--on-surface-v);word-break:break-all}
+.cursor{display:inline-block;width:8px;height:1.1em;background:var(--primary);vertical-align:text-bottom;border-radius:2px;animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+.typing{display:inline-flex;gap:4px;padding:4px 0}
+.typing i{width:8px;height:8px;border-radius:50%;background:var(--on-surface-v);animation:bounce 1.2s infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes bounce{0%,60%,100%{transform:none;opacity:.5}30%{transform:translateY(-5px);opacity:1}}
+.empty{max-width:560px;margin:8vh auto 0;text-align:center;color:var(--on-surface-v);padding:0 16px}
+.empty .logo{font-size:56px;line-height:1;color:var(--primary)}
+.empty h2{color:var(--on-surface);font-weight:400;font-size:24px;margin:12px 0 4px}
+.sugs{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:20px;text-align:left}
+.sug{border:1px solid var(--outline-v);background:var(--surface-1);border-radius:var(--r-m);padding:12px;cursor:pointer;display:flex;gap:10px;align-items:flex-start;font-size:14px;color:var(--on-surface)}
+.sug svg.i{color:var(--primary)}
+
+.composer{flex:none;padding:8px 12px 12px;background:var(--surface)}
+.composer .wrap{display:flex;flex-direction:column;gap:6px}
+.modechip{align-self:flex-start;display:none;align-items:center;gap:6px;height:32px;padding:0 4px 0 12px;border-radius:8px;background:var(--secondary-c);color:var(--on-secondary-c);font-size:14px;font-weight:500}
+.modechip.on{display:inline-flex}
+.modechip svg.i{width:18px;height:18px}
+.modechip button{border:0;background:transparent;color:inherit;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;cursor:pointer}
+.bar{display:flex;align-items:flex-end;gap:4px;background:var(--surface-3);border-radius:28px;padding:4px}
+.bar textarea{flex:1;border:0;background:transparent;resize:none;outline:none;padding:12px 4px;max-height:40vh;min-height:48px;line-height:24px}
+.send{width:48px;height:48px;border-radius:50%;border:0;background:var(--primary);color:var(--on-primary);display:grid;place-items:center;cursor:pointer;flex:none}
+.send:disabled{opacity:.4}
+.send.stop{background:var(--error-c);color:var(--on-error-c)}
+
+/* Tarjetas y formularios */
+.card{background:var(--surface-1);border-radius:var(--r-m);padding:16px;margin:12px 0;border:1px solid var(--outline-v)}
+.card.hero{background:var(--primary-c);color:var(--on-primary-c);border:0}
+.card h2{font-size:20px;font-weight:400;margin:0 0 4px}
+.card h3{font-size:16px;font-weight:500;margin:0 0 4px}
+.card p{margin:4px 0 12px;color:inherit;opacity:.85;font-size:14px}
+.state{display:flex;align-items:center;gap:8px;font-weight:500;margin:6px 0 12px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--outline);flex:none}
+.dot.ok{background:var(--ok)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--error)}
+.progress{height:6px;border-radius:3px;background:color-mix(in srgb,var(--primary) 20%,transparent);overflow:hidden;margin:8px 0 4px}
+.progress div{height:100%;background:var(--primary);border-radius:3px;transition:width .4s}
+.field{display:flex;flex-direction:column;gap:6px;margin:16px 0}
+.field label{font-size:14px;font-weight:500;color:var(--on-surface-v)}
+.field small{font-size:12px;color:var(--on-surface-v)}
+.input{width:100%;border:1px solid var(--outline);border-radius:4px;background:transparent;padding:14px 16px;outline:none;min-height:56px}
+.input:focus{border-color:var(--primary);box-shadow:inset 0 0 0 1px var(--primary)}
+textarea.input{resize:vertical;min-height:96px}
+.pw{position:relative}.pw .input{padding-right:52px}.pw .ib{position:absolute;right:4px;top:4px}
+.seg{display:flex;border:1px solid var(--outline);border-radius:20px;overflow:hidden;height:40px}
+.seg button{flex:1;border:0;background:transparent;cursor:pointer;font-size:14px;font-weight:500;border-left:1px solid var(--outline)}
+.seg button:first-child{border-left:0}
+.seg button.on{background:var(--secondary-c);color:var(--on-secondary-c)}
+.switchrow{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:16px 0}
+.switchrow div{font-size:16px}.switchrow small{display:block;font-size:12px;color:var(--on-surface-v)}
+.sw{position:relative;width:52px;height:32px;flex:none}
+.sw input{opacity:0;width:0;height:0;position:absolute}
+.sw span{position:absolute;inset:0;border-radius:16px;background:var(--surface-3);border:2px solid var(--outline);transition:.2s;cursor:pointer}
+.sw span::after{content:"";position:absolute;width:16px;height:16px;left:6px;top:6px;border-radius:50%;background:var(--outline);transition:.2s}
+.sw input:checked+span{background:var(--primary);border-color:var(--primary)}
+.sw input:checked+span::after{left:24px;top:2px;width:24px;height:24px;background:var(--on-primary)}
+.kv{font-size:14px;color:var(--on-surface-v);word-break:break-all}
+
+/* Archivos */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:8px}
+.tile{background:var(--surface-1);border:1px solid var(--outline-v);border-radius:var(--r-m);overflow:hidden;cursor:pointer;display:flex;flex-direction:column;text-align:left;padding:0}
+.tile .th{aspect-ratio:1/1;background:var(--surface-3);display:grid;place-items:center;color:var(--primary);overflow:hidden}
+.tile .th img{width:100%;height:100%;object-fit:cover}
+.tile .th svg.i{width:48px;height:48px}
+.tile .nm{padding:8px 10px 2px;font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile .sz{padding:0 10px 10px;font-size:12px;color:var(--on-surface-v)}
+.filters{display:flex;gap:8px;overflow-x:auto;padding:4px 0}
+.filters .chip.on{background:var(--secondary-c);color:var(--on-secondary-c);border-color:transparent}
+
+/* Hojas, diálogos y avisos */
+.scrim{position:fixed;inset:0;background:var(--scrim);display:none;z-index:20}
+.scrim.on{display:block}
+.sheet{position:fixed;left:0;right:0;bottom:0;max-height:85vh;background:var(--surface-1);border-radius:28px 28px 0 0;z-index:21;transform:translateY(105%);transition:transform .25s cubic-bezier(.2,0,0,1);display:flex;flex-direction:column;padding-bottom:env(safe-area-inset-bottom);max-width:640px;margin:0 auto}
+.sheet.on{transform:none}
+.sheet .handle{width:32px;height:4px;border-radius:2px;background:var(--outline);margin:16px auto 8px;flex:none}
+.sheet h3{margin:4px 24px 8px;font-size:16px;font-weight:500}
+.sheet .list{overflow-y:auto;padding:0 0 12px}
+.item{display:flex;align-items:center;gap:16px;width:100%;border:0;background:transparent;padding:12px 24px;text-align:left;cursor:pointer;font-size:16px;min-height:56px}
+.item:hover{background:color-mix(in srgb,var(--on-surface) 8%,transparent)}
+.item svg.i{color:var(--on-surface-v)}
+.item small{display:block;font-size:13px;color:var(--on-surface-v)}
+.item.on{color:var(--primary);font-weight:500}.item.on svg.i{color:var(--primary)}
+.sheet .search{margin:0 16px 8px}
+.dialog{position:fixed;inset:0;display:none;place-items:center;z-index:30;padding:24px;background:var(--scrim)}
+.dialog.on{display:grid}
+.dialog .box{background:var(--surface-2);border-radius:var(--r-l);padding:24px;width:min(100%,560px);max-height:90vh;display:flex;flex-direction:column;gap:12px}
+.dialog .box h3{margin:0;font-size:22px;font-weight:400}
+.dialog .box .body{overflow:auto;color:var(--on-surface-v);font-size:14px}
+.dialog .box .acts{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px}
+.dialog .media img{cursor:default}
+pre.log{font-size:12px;line-height:1.4;white-space:pre-wrap;word-break:break-all;margin:0;color:var(--on-surface);font-family:ui-monospace,Menlo,Consolas,monospace}
+.snack{position:fixed;left:50%;bottom:calc(var(--nav-h) + 16px + env(safe-area-inset-bottom));transform:translate(-50%,20px);background:var(--on-surface);color:var(--surface);padding:14px 16px;border-radius:4px;font-size:14px;max-width:min(92vw,560px);opacity:0;pointer-events:none;transition:.2s;z-index:40;box-shadow:0 3px 8px rgba(0,0,0,.25)}
+.snack.on{opacity:1;transform:translate(-50%,0)}
+@media (min-width:840px){.snack{bottom:24px}}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+ <symbol id="i-chat" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></symbol>
+ <symbol id="i-home" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/></symbol>
+ <symbol id="i-folder" viewBox="0 0 24 24"><path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/></symbol>
+ <symbol id="i-tune" viewBox="0 0 24 24"><path d="M3 17v2h6v-2H3zM3 5v2h10V5H3zm10 16v-2h8v-2h-8v-2h-2v6h2zM7 9v2H3v2h4v2h2V9H7zm14 4v-2H11v2h10zm-6-4h2V7h4V5h-4V3h-2v6z"/></symbol>
+ <symbol id="i-send" viewBox="0 0 24 24"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></symbol>
+ <symbol id="i-stop" viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></symbol>
+ <symbol id="i-add" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></symbol>
+ <symbol id="i-image" viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></symbol>
+ <symbol id="i-movie" viewBox="0 0 24 24"><path d="m18 4 2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></symbol>
+ <symbol id="i-voice" viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></symbol>
+ <symbol id="i-save" viewBox="0 0 24 24"><path d="M17 3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></symbol>
+ <symbol id="i-code" viewBox="0 0 24 24"><path d="M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></symbol>
+ <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></symbol>
+ <symbol id="i-delete" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></symbol>
+ <symbol id="i-open" viewBox="0 0 24 24"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></symbol>
+ <symbol id="i-download" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></symbol>
+ <symbol id="i-close" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></symbol>
+ <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></symbol>
+ <symbol id="i-copy" viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></symbol>
+ <symbol id="i-expand" viewBox="0 0 24 24"><path d="M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z"/></symbol>
+ <symbol id="i-term" viewBox="0 0 24 24"><path d="M20 4H4c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.89-2-2-2zm0 14H4V8h16v10zm-2-1h-6v-2h6v2zM7.5 17l-1.41-1.41L8.67 13l-2.59-2.59L7.5 9l4 4-4 4z"/></symbol>
+ <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></symbol>
+ <symbol id="i-link" viewBox="0 0 24 24"><path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/></symbol>
+ <symbol id="i-list" viewBox="0 0 24 24"><path d="M3 13h2v-2H3v2zm0 4h2v-2H3v2zm0-8h2V7H3v2zm4 4h14v-2H7v2zm0 4h14v-2H7v2zM7 7v2h14V7H7z"/></symbol>
+ <symbol id="i-eye" viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></symbol>
+ <symbol id="i-new" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 0 0 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></symbol>
+ <symbol id="i-check" viewBox="0 0 24 24"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></symbol>
+</svg>
+
+<div class="app">
+ <nav class="nav" id="nav">
+  <button data-p="chat" class="on"><span class="pill"><svg class="i"><use href="#i-chat"/></svg></span>Chat</button>
+  <button data-p="home"><span class="pill"><svg class="i"><use href="#i-home"/></svg></span>Inicio</button>
+  <button data-p="files"><span class="pill"><svg class="i"><use href="#i-folder"/></svg></span>Archivos</button>
+  <button data-p="settings"><span class="pill"><svg class="i"><use href="#i-tune"/></svg></span>Ajustes</button>
+ </nav>
+ <div class="main">
+  <!-- Chat -->
+  <section class="page on" id="p-chat">
+   <div class="top">
+    <h1>Infinito</h1>
+    <button class="chip" id="modelChip" title="Elegir modelo"><span class="dot" id="chatDot"></span><span id="modelName">auto</span><svg class="i"><use href="#i-expand"/></svg></button>
+    <button class="ib" id="newChat" title="Nueva conversación"><svg class="i"><use href="#i-new"/></svg></button>
+   </div>
+   <div class="msgs" id="msgs"></div>
+   <div class="composer">
+    <div class="wrap">
+     <div class="modechip" id="modeChip"><svg class="i"><use id="modeIcon" href="#i-image"/></svg><span id="modeLabel">Imagen</span><button id="modeOff" title="Quitar"><svg class="i"><use href="#i-close"/></svg></button></div>
+     <div class="bar">
+      <button class="ib" id="tools" title="Más opciones"><svg class="i"><use href="#i-add"/></svg></button>
+      <textarea id="input" rows="1" placeholder="Escribe un mensaje"></textarea>
+      <button class="send" id="send" title="Enviar" disabled><svg class="i"><use id="sendIcon" href="#i-send"/></svg></button>
+     </div>
+    </div>
+   </div>
+  </section>
+
+  <!-- Inicio -->
+  <section class="page" id="p-home">
+   <div class="top"><h1>Inicio</h1><button class="ib" id="homeRefresh" title="Comprobar"><svg class="i"><use href="#i-refresh"/></svg></button></div>
+   <div class="scroll"><div class="wrap">
+    <div class="card hero">
+     <h2>FreeLLMAPI</h2>
+     <div class="state"><span class="dot" id="hDot"></span><span id="hState">Comprobando…</span></div>
+     <div id="hProg" class="hide"><div class="progress"><div id="hBar" style="width:0"></div></div><small id="hPct"></small></div>
+     <p id="hMsg">Es el motor del chat: reparte tus preguntas entre proveedores de IA gratuitos.</p>
+     <div class="row" id="hActs"></div>
+    </div>
+    <div class="card">
+     <h3>Qué puedes hacer en el chat</h3>
+     <p>Pulsa <b>+</b> junto al cuadro de texto para generar imágenes, vídeo o voz, guardar la última respuesta, guardar su código en archivos o exportar toda la conversación. Todo queda en Archivos.</p>
+     <div class="row"><button class="btn filled" data-go="chat"><svg class="i"><use href="#i-chat"/></svg>Ir al chat</button><button class="btn tonal" id="hModel"><svg class="i"><use href="#i-list"/></svg>Elegir modelo</button></div>
+    </div>
+    <div class="card">
+     <h3>Si el chat no responde</h3>
+     <p>Recién instalado, FreeLLMAPI solo usa proveedores sin clave y a veces están saturados. Abre su panel web y añade una clave gratuita (Groq, Gemini, OpenRouter…). Se guarda allí y el chat la usa sola.</p>
+     <div class="row"><button class="btn outlined" data-act="web"><svg class="i"><use href="#i-link"/></svg>Panel web</button></div>
+    </div>
+    <div class="card"><h3>Infinito</h3><div class="kv" id="hInfo"></div></div>
+   </div></div>
+  </section>
+
+  <!-- Archivos -->
+  <section class="page" id="p-files">
+   <div class="top"><h1>Archivos</h1><button class="ib" id="openFolder" title="Abrir carpeta"><svg class="i"><use href="#i-open"/></svg></button><button class="ib" id="filesRefresh" title="Recargar"><svg class="i"><use href="#i-refresh"/></svg></button></div>
+   <div class="scroll"><div class="wrap">
+    <div class="kv" id="fDir"></div>
+    <div class="filters" id="fFilters">
+     <button class="chip on" data-k="">Todo</button><button class="chip" data-k="image">Imágenes</button><button class="chip" data-k="video">Vídeo</button><button class="chip" data-k="audio">Audio</button><button class="chip" data-k="text">Texto y código</button>
+    </div>
+    <div class="grid" id="fGrid"></div>
+    <div class="empty hide" id="fEmpty"><div class="logo"><svg class="i" style="width:56px;height:56px"><use href="#i-folder"/></svg></div><h2>Sin archivos todavía</h2><p>En el chat pulsa + para crear imágenes, vídeo o voz, o para guardar respuestas y código.</p></div>
+   </div></div>
+  </section>
+
+  <!-- Ajustes -->
+  <section class="page" id="p-settings">
+   <div class="top"><h1>Ajustes</h1></div>
+   <div class="scroll"><div class="wrap">
+    <div class="card" id="sAndroid" style="display:none">
+     <h3>Modo de la app</h3>
+     <p>Puedes pasar a la versión de terminal cuando quieras. La conversación es la misma.</p>
+     <button class="btn tonal" id="toTui"><svg class="i"><use href="#i-term"/></svg>Cambiar a terminal (TUI)</button>
+    </div>
+    <div class="card">
+     <div class="field"><label>Al abrir Infinito</label>
+      <div class="seg" id="sMode"><button data-v="">Preguntar</button><button data-v="gui">Gráfica</button><button data-v="tui">Terminal</button></div>
+     </div>
+     <div class="switchrow"><div>Arrancar FreeLLMAPI al abrir<small>Si lo apagas, arráncalo tú desde Inicio.</small></div><label class="sw"><input type="checkbox" id="sAuto"><span></span></label></div>
+     <div class="field"><label for="sModel">Modelo del chat</label><input class="input" id="sModel" placeholder="auto"><small>«auto» deja que FreeLLMAPI elija el mejor proveedor libre.</small></div>
+     <div class="field"><label for="sSystem">Instrucciones para la IA</label><textarea class="input" id="sSystem" rows="3"></textarea></div>
+    </div>
+    <div class="card">
+     <h3>Conexión</h3>
+     <div class="field"><label for="sURL">URL de FreeLLMAPI</label><input class="input" id="sURL" inputmode="url" autocomplete="off"></div>
+     <div class="field"><label for="sKey">Clave única de FreeLLMAPI</label><div class="pw"><input class="input" id="sKey" type="password" autocomplete="off"><button class="ib" id="sEye" type="button"><svg class="i"><use href="#i-eye"/></svg></button></div><small>Se rellena sola al arrancar FreeLLMAPI.</small></div>
+     <div class="field"><label for="sPort">Puerto de la interfaz gráfica</label><input class="input" id="sPort" inputmode="numeric"><small>Se aplica la próxima vez que abras Infinito.</small></div>
+    </div>
+    <div class="row" style="justify-content:flex-end;margin:8px 0 24px"><button class="btn text" id="sReset">Descartar</button><button class="btn filled" id="sSave"><svg class="i"><use href="#i-check"/></svg>Guardar</button></div>
+   </div></div>
+  </section>
+ </div>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<div class="sheet" id="toolSheet">
+ <div class="handle"></div>
+ <div class="list">
+  <button class="item" data-mode="image"><svg class="i"><use href="#i-image"/></svg><div>Crear imagen<small>Describe la imagen y envía</small></div></button>
+  <button class="item" data-mode="video"><svg class="i"><use href="#i-movie"/></svg><div>Crear vídeo<small>Puede tardar varios minutos</small></div></button>
+  <button class="item" data-mode="audio"><svg class="i"><use href="#i-voice"/></svg><div>Convertir texto en voz<small>Escribe el texto que quieres oír</small></div></button>
+  <button class="item" data-tool="save"><svg class="i"><use href="#i-save"/></svg><div>Guardar la última respuesta<small>Como archivo Markdown (.md)</small></div></button>
+  <button class="item" data-tool="code"><svg class="i"><use href="#i-code"/></svg><div>Guardar el código de la respuesta<small>Cada bloque en su archivo (.py, .js, .html…)</small></div></button>
+  <button class="item" data-tool="export"><svg class="i"><use href="#i-doc"/></svg><div>Exportar la conversación<small>Toda la charla en un .md</small></div></button>
+  <button class="item" data-tool="new"><svg class="i"><use href="#i-new"/></svg><div>Nueva conversación</div></button>
+ </div>
+</div>
+<div class="sheet" id="modelSheet">
+ <div class="handle"></div>
+ <h3>Modelo del chat</h3>
+ <input class="input search" id="modelSearch" placeholder="Buscar modelo">
+ <div class="list" id="modelList"></div>
+</div>
+<div class="dialog" id="dlg"><div class="box"><h3 id="dlgTitle"></h3><div class="body" id="dlgBody"></div><div class="acts" id="dlgActs"></div></div></div>
+<div class="snack" id="snack"></div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const store = {get(k){try{return sessionStorage.getItem(k)}catch(e){return null}}, set(k,v){try{sessionStorage.setItem(k,v)}catch(e){}}};
+const HP = new URLSearchParams(location.hash.slice(1));
+let TOKEN = HP.get('t') || store.get('t') || '';
+const THEME = HP.get('theme') || store.get('theme');
+if (THEME === 'dark' || THEME === 'light') { document.documentElement.dataset.theme = THEME; store.set('theme', THEME) }
+if (TOKEN) store.set('t', TOKEN);
+const AND = window.Android || null;
+
+const KIND = {image:{icon:'i-image',label:'Imagen',ph:'Describe la imagen que quieres',busy:'Creando la imagen…'},
+              video:{icon:'i-movie',label:'Vídeo',ph:'Describe el vídeo que quieres',busy:'Creando el vídeo… puede tardar varios minutos'},
+              audio:{icon:'i-voice',label:'Voz',ph:'Escribe el texto que quieres oír',busy:'Creando la voz…'}};
+const S = {page:'chat', hist:[], st:null, mode:'', streaming:null, partial:'', route:'', pending:null, files:[], fkind:'', models:null, settings:null, abort:null};
+
+function icon(id){return `<svg class="i"><use href="#${id}"/></svg>`}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function fileURL(n,dl){return '/app/files/'+encodeURIComponent(n)+'?t='+encodeURIComponent(TOKEN)+(dl?'&dl=1':'')}
+function kindOf(n){const e=(n.split('.').pop()||'').toLowerCase();
+  if(['png','jpg','jpeg','webp','gif'].includes(e))return 'image';
+  if(['mp4','webm'].includes(e))return 'video';
+  if(['mp3','wav','ogg','flac','aac'].includes(e))return 'audio';return 'text'}
+function size(n){return n>=1<<20?(n/1048576).toFixed(1)+' MB':n>=1024?Math.round(n/1024)+' KB':n+' B'}
+
+async function api(path, body){
+  const o = {headers:{'X-Token':TOKEN}};
+  if (body !== undefined){o.method='POST';o.headers['Content-Type']='application/json';o.body=JSON.stringify(body)}
+  const r = await fetch('/app/api/'+path, o);
+  let j = null; try{ j = await r.json() }catch(e){}
+  if (!r.ok){const e = new Error((j&&j.error)||('HTTP '+r.status)); e.hint = j&&j.hint; throw e}
+  return j;
+}
+let snackT;
+function snack(msg){const s=$('#snack');s.textContent=msg;s.classList.add('on');clearTimeout(snackT);snackT=setTimeout(()=>s.classList.remove('on'),4200)}
+function fail(e){snack(e.message + (e.hint ? ' · ' + e.hint : ''))}
+
+/* ---------- Navegación ---------- */
+function go(p){
+  S.page=p;
+  $$('#nav button').forEach(b=>b.classList.toggle('on',b.dataset.p===p));
+  $$('.page').forEach(s=>s.classList.toggle('on',s.id==='p-'+p));
+  if(p==='files')loadFiles(); if(p==='settings')loadSettings(); if(p==='home')loadState();
+  if(p==='chat')setTimeout(()=>scrollBottom(true),0);
+}
+$$('#nav button').forEach(b=>b.onclick=()=>go(b.dataset.p));
+$$('[data-go]').forEach(b=>b.onclick=()=>go(b.dataset.go));
+
+/* ---------- Markdown sencillo ---------- */
+function inline(s){
+  s = esc(s);
+  s = s.replace(/`([^`]+)`/g,(m,c)=>'<code>'+c+'</code>');
+  s = s.replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>').replace(/(^|[^*])\*([^*\s][^*]*)\*/g,'$1<i>$2</i>');
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener">$1</a>');
+  return s;
+}
+function md(text){
+  const out=[]; const parts=text.split(/```/);
+  parts.forEach((p,i)=>{
+    if(i%2===1){
+      const nl=p.indexOf('\n'); const lang=nl>=0?p.slice(0,nl).trim():''; const code=nl>=0?p.slice(nl+1):p;
+      out.push(`<div class="codeblk"><header><span>${esc(lang||'código')}</span><button data-copy>Copiar</button></header><pre><code>${esc(code.replace(/\n$/,''))}</code></pre></div>`);
+      return;
+    }
+    let list=null, para=[];
+    const flush=()=>{if(para.length){out.push('<p>'+para.map(inline).join('<br>')+'</p>');para=[]}};
+    const endList=()=>{if(list){out.push('</'+list+'>');list=null}};
+    p.split('\n').forEach(line=>{
+      let m;
+      if(!line.trim()){flush();endList();return}
+      if((m=line.match(/^(#{1,4})\s+(.*)/))){flush();endList();out.push(`<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`);return}
+      if((m=line.match(/^\s*[-*•]\s+(.*)/))){flush();if(list!=='ul'){endList();out.push('<ul>');list='ul'}out.push('<li>'+inline(m[1])+'</li>');return}
+      if((m=line.match(/^\s*\d+[.)]\s+(.*)/))){flush();if(list!=='ol'){endList();out.push('<ol>');list='ol'}out.push('<li>'+inline(m[1])+'</li>');return}
+      endList();para.push(line);
+    });
+    flush();endList();
+  });
+  return out.join('');
+}
+
+/* ---------- Chat ---------- */
+const msgsEl=$('#msgs'), input=$('#input'), sendBtn=$('#send');
+function nearBottom(){return msgsEl.scrollHeight-msgsEl.scrollTop-msgsEl.clientHeight<120}
+function scrollBottom(force){if(force||S.stick)msgsEl.scrollTop=msgsEl.scrollHeight}
+msgsEl.addEventListener('scroll',()=>{S.stick=nearBottom()});
+
+function mediaHTML(f){
+  const k=kindOf(f), u=fileURL(f);
+  let el = k==='image'?`<img src="${u}" alt="${esc(f)}" data-view="${esc(f)}" loading="lazy">`
+        : k==='video'?`<video src="${u}" controls playsinline preload="metadata"></video>`
+        : k==='audio'?`<audio src="${u}" controls preload="metadata"></audio>`
+        : `<button class="btn tonal" data-view="${esc(f)}">${icon('i-doc')}${esc(f)}</button>`;
+  return el;
+}
+function fileActs(f){
+  return `<button class="ib" title="Abrir" data-openf="${esc(f)}">${icon('i-open')}</button>`+
+    (AND&&AND.saveFile?`<button class="ib" title="Guardar en Descargas" data-savef="${esc(f)}">${icon('i-download')}</button>`
+         :`<a class="ib" title="Descargar" href="${fileURL(f,1)}" download="${esc(f)}">${icon('i-download')}</a>`);
+}
+function renderChat(){
+  const stick = S.stick!==false;
+  const h=S.hist; let html='';
+  if(!h.length && !S.streaming && !S.pending){
+    html=`<div class="empty"><div class="logo">♾</div><h2>¿En qué te ayudo?</h2><p>Responde FreeLLMAPI con modelos de IA gratuitos.</p>
+      <div class="sugs">
+       <button class="sug" data-sug="Explícame de forma sencilla cómo funciona una red neuronal">${icon('i-chat')}<span>Explícame cómo funciona una red neuronal</span></button>
+       <button class="sug" data-sug="Escribe un script en Python que renombre todas las fotos de una carpeta con su fecha">${icon('i-code')}<span>Un script en Python para renombrar fotos</span></button>
+       <button class="sug" data-mode-sug="image" data-sug="Un faro en un acantilado al atardecer, estilo acuarela">${icon('i-image')}<span>Crear una imagen de un faro al atardecer</span></button>
+       <button class="sug" data-mode-sug="audio" data-sug="Hola, soy Infinito. Puedo leer en voz alta lo que escribas.">${icon('i-voice')}<span>Convertir un texto en voz</span></button>
+      </div></div>`;
+  }
+  h.forEach((m,i)=>{
+    if(m.role==='user'){html+=`<div class="msg user"><div class="bubble">${esc(m.content)}</div></div>`;return}
+    if(m.kind==='error'){html+=`<div class="msg bot err"><div class="bubble"><b>No hubo respuesta</b><br>${esc(m.content)}<br><small>${esc(m.hint||'')}</small></div></div>`;return}
+    if(m.files&&m.files.length){
+      html+=`<div class="msg bot"><div class="bubble media">${m.files.map(f=>mediaHTML(f)+`<div class="fname">${esc(f)}</div>`).join('')}</div>
+        <div class="meta">${esc(m.via||'')}${m.files.map(fileActs).join('')}</div></div>`;return}
+    html+=`<div class="msg bot"><div class="bubble">${md(m.content)}</div><div class="meta">${esc(m.via||'')}
+      <button class="ib" title="Copiar" data-copymsg="${i}">${icon('i-copy')}</button>
+      <button class="ib" title="Guardar como archivo" data-savemsg="${i}">${icon('i-save')}</button></div></div>`;
+  });
+  if(S.streaming){
+    html+=`<div class="msg user"><div class="bubble">${esc(S.streaming)}</div></div>`;
+    html+=`<div class="msg bot"><div class="bubble">${S.partial?md(S.partial)+'<span class="cursor"></span>':'<span class="typing"><i></i><i></i><i></i></span>'}</div><div class="meta">FreeLLMAPI${S.route?' · '+esc(S.route):''}</div></div>`;
+  }
+  if(S.pending){
+    html+=`<div class="msg user"><div class="bubble">${esc(S.pending.prompt)}</div></div>`;
+    html+=`<div class="msg bot"><div class="bubble"><span class="typing"><i></i><i></i><i></i></span> ${esc(KIND[S.pending.kind].busy)}</div></div>`;
+  }
+  msgsEl.innerHTML=html;
+  if(stick)scrollBottom(true);
+}
+async function loadHistory(){
+  try{const h=await api('history');h.forEach(m=>{if(m.kind==='error')m.hint=hintFor(m.content)});S.hist=h;renderChat()}catch(e){fail(e)}
+}
+function hintFor(e){e=(e||'').toLowerCase();
+  if(/connection refused|connectex|no such host|failed to fetch/.test(e))return 'FreeLLMAPI no está en marcha. Ve a Inicio y pulsa Arrancar.';
+  if(/401|invalid api key/.test(e))return 'Falta la clave de FreeLLMAPI. Para y vuelve a arrancar FreeLLMAPI en Inicio.';
+  if(/provider|exhausted|api key|no_|503/.test(e))return 'Ningún proveedor gratuito ha respondido. Abre el panel web de FreeLLMAPI (Inicio) y añade una clave gratuita, por ejemplo de Groq, Gemini u OpenRouter.';
+  return 'Revisa Inicio: FreeLLMAPI tiene que estar en marcha.'}
+
+function busy(){return !!(S.streaming||S.pending)}
+function updateSend(){
+  const b=busy();
+  sendBtn.classList.toggle('stop',b);
+  $('#sendIcon').setAttribute('href',b?'#i-stop':'#i-send');
+  sendBtn.title=b?'Parar':'Enviar';
+  sendBtn.disabled=!b && !input.value.trim();
+}
+function autosize(){input.style.height='auto';input.style.height=Math.min(input.scrollHeight,window.innerHeight*.4)+'px'}
+input.addEventListener('input',()=>{autosize();updateSend()});
+input.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey&&!e.isComposing&&matchMedia('(pointer:fine)').matches){e.preventDefault();if(!busy())send()}
+});
+sendBtn.onclick=()=>busy()?stop():send();
+
+function setMode(k){
+  S.mode=k||'';
+  $('#modeChip').classList.toggle('on',!!k);
+  if(k){$('#modeIcon').setAttribute('href','#'+KIND[k].icon);$('#modeLabel').textContent=KIND[k].label;input.placeholder=KIND[k].ph}
+  else input.placeholder='Escribe un mensaje';
+}
+$('#modeOff').onclick=()=>{setMode('');input.focus()};
+
+async function send(){
+  const text=input.value.trim(); if(!text)return;
+  input.value='';autosize();
+  S.stick=true;
+  if(S.mode){
+    const kind=S.mode; setMode('');
+    S.pending={kind,prompt:KIND[kind].label+': '+text};renderChat();updateSend();
+    try{await api('media',{kind,prompt:text});snack('Listo: guardado en Archivos')}
+    catch(e){if(!/context canceled/.test(e.message))fail(e)}
+    S.pending=null;await loadHistory();updateSend();return;
+  }
+  S.streaming=text;S.partial='';S.route='';renderChat();updateSend();
+  const ac=new AbortController();S.abort=ac;
+  try{
+    const r=await fetch('/app/api/chat',{method:'POST',headers:{'X-Token':TOKEN,'Content-Type':'application/json'},body:JSON.stringify({text}),signal:ac.signal});
+    if(!r.ok){let j={};try{j=await r.json()}catch(e){}const e=new Error(j.error||('HTTP '+r.status));e.hint=j.hint;throw e}
+    const rd=r.body.getReader();const dec=new TextDecoder();let buf='';let t=0;
+    for(;;){
+      const {value,done}=await rd.read(); if(done)break;
+      buf+=dec.decode(value,{stream:true});
+      let i;while((i=buf.indexOf('\n'))>=0){
+        const line=buf.slice(0,i);buf=buf.slice(i+1);if(!line.trim())continue;
+        let ev;try{ev=JSON.parse(line)}catch(e){continue}
+        if(ev.delta)S.partial+=ev.delta;
+        if(ev.route)S.route=ev.route;
+        if(ev.error&&!/context canceled/.test(ev.error))snack(ev.hint||ev.error);
+      }
+      const now=Date.now();if(now-t>60){t=now;renderChat()}
+    }
+  }catch(e){if(e.name!=='AbortError')fail(e)}
+  S.streaming=null;S.abort=null;S.partial='';
+  await loadHistory();updateSend();
+}
+async function stop(){
+  try{await api('stop',{})}catch(e){}
+  if(S.abort)S.abort.abort();
+}
+
+/* Delegación de clics en el chat */
+msgsEl.addEventListener('click',async e=>{
+  const t=e.target.closest('button,img,a');if(!t)return;
+  if(t.dataset.copy!==undefined){copy(t.closest('.codeblk').querySelector('code').textContent);return}
+  if(t.dataset.copymsg){copy(S.hist[+t.dataset.copymsg].content);return}
+  if(t.dataset.savemsg){try{const r=await api('save',{idx:+t.dataset.savemsg});snack('Guardada como '+r.names[0])}catch(e){fail(e)}return}
+  if(t.dataset.view){viewFile(t.dataset.view);return}
+  if(t.dataset.openf){openFile(t.dataset.openf);return}
+  if(t.dataset.savef){saveFile(t.dataset.savef);return}
+  if(t.dataset.sug){input.value=t.dataset.sug;setMode(t.dataset.modeSug||'');autosize();updateSend();input.focus();return}
+});
+async function copy(text){
+  try{await navigator.clipboard.writeText(text);snack('Copiado')}
+  catch(e){const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');snack('Copiado')}catch(e){snack('No se pudo copiar')}ta.remove()}
+}
+
+/* Hojas inferiores */
+function openSheet(id){$('#scrim').classList.add('on');$(id).classList.add('on')}
+function closeSheets(){$('#scrim').classList.remove('on');$$('.sheet').forEach(s=>s.classList.remove('on'))}
+$('#scrim').onclick=closeSheets;
+$('#tools').onclick=()=>openSheet('#toolSheet');
+$$('#toolSheet [data-mode]').forEach(b=>b.onclick=()=>{closeSheets();setMode(b.dataset.mode);input.focus()});
+$$('#toolSheet [data-tool]').forEach(b=>b.onclick=async()=>{
+  closeSheets();const t=b.dataset.tool;
+  if(t==='new'){newChat();return}
+  try{const r=await api(t,{});snack((r.names.length>1?r.names.length+' archivos guardados: ':'Guardado: ')+r.names.join(', '))}catch(e){fail(e)}
+});
+async function newChat(){
+  if(!S.hist.length)return;
+  confirmDlg('¿Empezar una conversación nueva?','La actual se borra del chat. Si la quieres conservar, expórtala antes desde +.','Nueva',async()=>{
+    try{await api('new',{});S.hist=[];renderChat()}catch(e){fail(e)}
+  });
+}
+$('#newChat').onclick=newChat;
+
+/* Modelos */
+async function openModels(){
+  openSheet('#modelSheet');$('#modelSearch').value='';
+  $('#modelList').innerHTML='<div class="item">Cargando modelos…</div>';
+  try{S.models=await api('models');renderModels()}
+  catch(e){$('#modelList').innerHTML=`<div class="item"><div>No pude leer los modelos<small>${esc(e.message)}</small></div></div>`}
+}
+function renderModels(){
+  if(!S.models)return;const q=$('#modelSearch').value.toLowerCase();
+  $('#modelList').innerHTML=S.models.models.filter(m=>m.toLowerCase().includes(q)).slice(0,400).map(m=>
+    `<button class="item ${m===S.models.current?'on':''}" data-m="${esc(m)}">${icon(m===S.models.current?'i-check':'i-chat')}<div>${esc(m)}${m==='auto'?'<small>FreeLLMAPI elige el mejor proveedor libre</small>':''}</div></button>`).join('');
+}
+$('#modelSearch').oninput=renderModels;
+$('#modelList').onclick=async e=>{const b=e.target.closest('[data-m]');if(!b)return;
+  try{await api('model',{model:b.dataset.m});closeSheets();snack('Modelo: '+b.dataset.m);loadState()}catch(e){fail(e)}};
+$('#modelChip').onclick=openModels;$('#hModel').onclick=openModels;
+
+/* ---------- Diálogos ---------- */
+function dialog(title,body,acts){
+  $('#dlgTitle').textContent=title;$('#dlgBody').innerHTML=body;
+  const a=$('#dlgActs');a.innerHTML='';
+  acts.forEach(([label,cls,fn,href])=>{
+    const b=document.createElement(href?'a':'button');b.className='btn '+cls;b.innerHTML=label;
+    if(href){b.href=href;b.download=''}
+    b.onclick=()=>{if(fn)fn();closeDlg()};a.appendChild(b);
+  });
+  $('#dlg').classList.add('on');
+}
+function closeDlg(){$('#dlg').classList.remove('on');$('#dlgBody').innerHTML=''}
+$('#dlg').onclick=e=>{if(e.target.id==='dlg')closeDlg()};
+function confirmDlg(title,text,ok,fn){dialog(title,esc(text),[['Cancelar','text'],[ok,'filled',fn]])}
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeDlg();closeSheets()}});
+
+/* ---------- Archivos ---------- */
+async function openFile(n){try{await api('open',{name:n});snack('Abriendo '+n)}catch(e){fail(e)}}
+function saveFile(n){try{AND.saveFile(n);snack('Guardando en Descargas…')}catch(e){fail(e)}}
+async function viewFile(n){
+  const k=kindOf(n);let body='';
+  if(k==='text'){
+    try{const r=await fetch(fileURL(n));const t=await r.text();body=`<pre class="log">${esc(t.slice(0,200000))}</pre>`}catch(e){body=esc(e.message)}
+  } else body=`<div class="media">${mediaHTML(n)}</div>`;
+  const acts=[['Borrar','danger',()=>delFile(n)],[icon('i-open')+'Abrir','tonal',()=>openFile(n)]];
+  if(AND&&AND.saveFile)acts.push([icon('i-download')+'A Descargas','tonal',()=>saveFile(n)]);
+  else acts.push([icon('i-download')+'Descargar','tonal',null,fileURL(n,1)]);
+  acts.push(['Cerrar','filled']);
+  dialog(n,body,acts);
+}
+function delFile(n){setTimeout(()=>confirmDlg('¿Borrar '+n+'?','Se borra de la carpeta de Infinito.','Borrar',async()=>{
+  try{await api('delete',{name:n});snack('Borrado');loadFiles()}catch(e){fail(e)}}),50)}
+async function loadFiles(){
+  try{const r=await api('files');S.files=r.files;$('#fDir').textContent='Carpeta: '+r.dir;renderFiles()}catch(e){fail(e)}
+}
+function renderFiles(){
+  const l=S.files.filter(f=>!S.fkind||f.kind===S.fkind);
+  $('#fEmpty').classList.toggle('hide',l.length>0);
+  $('#fGrid').innerHTML=l.map(f=>{
+    const th=f.kind==='image'?`<img src="${fileURL(f.name)}" loading="lazy" alt="">`:icon({video:'i-movie',audio:'i-voice'}[f.kind]||(/\.(md|txt)$/i.test(f.name)?'i-doc':'i-code'));
+    const d=new Date(f.time);
+    return `<button class="tile" data-f="${esc(f.name)}"><div class="th">${th}</div><div class="nm">${esc(f.name)}</div><div class="sz">${d.toLocaleDateString('es-ES')} ${d.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})} · ${size(f.size)}</div></button>`}).join('');
+}
+$('#fGrid').onclick=e=>{const t=e.target.closest('[data-f]');if(t)viewFile(t.dataset.f)};
+$('#fFilters').onclick=e=>{const c=e.target.closest('[data-k]');if(!c)return;S.fkind=c.dataset.k;$$('#fFilters .chip').forEach(x=>x.classList.toggle('on',x===c));renderFiles()};
+$('#filesRefresh').onclick=loadFiles;
+$('#openFolder').onclick=async()=>{try{await api('open',{});snack('Abriendo la carpeta')}catch(e){fail(e)}};
+if(AND)$('#openFolder').classList.add('hide');
+
+/* ---------- Inicio ---------- */
+async function loadState(){
+  try{S.st=await api('state');renderState()}catch(e){S.st=null;renderState(e)}
+}
+function renderState(err){
+  const st=S.st;const dot=$('#hDot'),cd=$('#chatDot');let cls='',txt='',msg='Es el motor del chat: reparte tus preguntas entre proveedores de IA gratuitos.';
+  const acts=[];
+  if(!st){cls='bad';txt='Infinito no responde';msg=err?err.message:''}
+  else{
+    $('#modelName').textContent=st.model||'auto';
+    if(st.installing){cls='warn';txt='Instalando…';msg='Se instala una sola vez, sin internet.'}
+    else if(!st.installed){cls='';txt='No instalado';
+      if(st.has_pack)acts.push(['install','filled','i-download','Instalar']);
+      else msg='Esta es la versión ligera. Descarga la versión completa del release para instalar sin internet.'}
+    else if(st.ok){cls='ok';txt='En marcha · '+st.models+(st.models===1?' modelo':' modelos')}
+    else if(st.running){cls='warn';txt='Arrancando…';msg='Tarda unos segundos.'}
+    else {cls=st.error?'bad':'';txt=st.error?'Con errores':'Parado';msg=st.error||'Pulsa Arrancar para usar el chat.'}
+    if(st.install_error)msg='La instalación falló: '+st.install_error;
+    if(st.installed&&!st.installing){
+      if(st.running)acts.push(['stop','danger','i-stop','Parar']);else if(!st.ok)acts.push(['start','filled','i-play','Arrancar']);
+      if(st.outdated)acts.push(['install','tonal','i-refresh','Actualizar']);
+      acts.push(['web','tonal','i-link','Panel web'],['log','text','i-list','Registro']);
+    }
+    $('#hProg').classList.toggle('hide',!st.installing);
+    $('#hBar').style.width=Math.round((st.progress||0)*100)+'%';$('#hPct').textContent=Math.round((st.progress||0)*100)+' %';
+    $('#hInfo').innerHTML=`Versión ${esc(st.version)}<br>Archivos en ${esc(st.files_dir)}<br>Panel de FreeLLMAPI: ${esc(st.dashboard)}`;
+    if(st.outdated)msg='Este Infinito trae una versión más nueva de FreeLLMAPI. Pulsa Actualizar: tus claves se conservan.';
+  }
+  dot.className='dot '+cls;cd.className='dot '+cls;$('#hState').textContent=txt;$('#hMsg').textContent=msg;
+  $('#hActs').innerHTML=acts.map(([a,c,i,l])=>`<button class="btn ${c}" data-act="${a}">${icon(i)}${l}</button>`).join('');
+}
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-act]');if(!b)return;const what=b.dataset.act;
+  if(what==='log'){showLog();return}
+  try{await api('action',{what});snack({install:'Instalando…',start:'Arrancando FreeLLMAPI…',stop:'FreeLLMAPI detenido',web:'Abriendo el panel web'}[what]||'Hecho');setTimeout(loadState,600)}catch(e){fail(e)}
+});
+$('#homeRefresh').onclick=loadState;
+async function showLog(){
+  try{const r=await api('log');dialog('Registro de FreeLLMAPI',`<pre class="log">${esc(r.lines.join('\n')||'(vacío)')}</pre>`,[['Copiar','text',()=>copy(r.lines.join('\n'))],['Cerrar','filled']]);
+    const b=$('#dlgBody');b.scrollTop=b.scrollHeight}catch(e){fail(e)}
+}
+
+/* ---------- Ajustes ---------- */
+async function loadSettings(){
+  try{S.settings=await api('settings');fillSettings()}catch(e){fail(e)}
+}
+function fillSettings(){
+  const s=S.settings;if(!s)return;
+  $$('#sMode button').forEach(b=>b.classList.toggle('on',b.dataset.v===(s.start_mode||'')));
+  $('#sAuto').checked=s.autostart;$('#sModel').value=s.model;$('#sSystem').value=s.system;
+  $('#sURL').value=s.url;$('#sKey').value=s.api_key;$('#sPort').value=s.gui_port;
+}
+$('#sMode').onclick=e=>{const b=e.target.closest('button');if(b)$$('#sMode button').forEach(x=>x.classList.toggle('on',x===b))};
+$('#sEye').onclick=()=>{const k=$('#sKey');k.type=k.type==='password'?'text':'password'};
+$('#sReset').onclick=()=>{fillSettings();snack('Cambios descartados')};
+$('#sSave').onclick=async()=>{
+  const set={start_mode:($('#sMode .on')||{}).dataset?.v||'',autostart:$('#sAuto').checked,url:$('#sURL').value,api_key:$('#sKey').value,
+    model:$('#sModel').value,system:$('#sSystem').value,gui_port:parseInt($('#sPort').value,10)||0};
+  try{S.settings=await api('settings',{settings:set});fillSettings();snack('Ajustes guardados');if(AND&&AND.setStartMode)AND.setStartMode(set.start_mode);loadState()}catch(e){fail(e)}
+};
+if(AND&&AND.switchMode){$('#sAndroid').style.display='';$('#toTui').onclick=()=>AND.switchMode('tui')}
+
+/* ---------- Arranque ---------- */
+if(!TOKEN){document.body.innerHTML='<div class="empty"><div class="logo">♾</div><h2>Abre Infinito desde su ventana</h2><p>Esta dirección necesita el enlace completo que muestra Infinito al arrancar.</p></div>'}
+else{
+  history.replaceState(null,'',location.pathname);
+  S.stick=true;loadHistory();loadState();updateSend();
+  setInterval(()=>{if(!document.hidden)loadState()},4000);
+  // Si algo cambia la conversación desde fuera (otra ventana), la recargamos.
+  setInterval(async()=>{if(document.hidden||busy())return;try{const h=await api('history');if(h.length!==S.hist.length){h.forEach(m=>{if(m.kind==='error')m.hint=hintFor(m.content)});S.hist=h;renderChat()}}catch(e){}},5000);
+}
+</script>
+</body>
+</html>

@@ -71,10 +71,11 @@ class MainActivity : Activity(), ServiceConnection, TerminalViewClient, Terminal
         val s = (binder as InfinitoService.LocalBinder).service
         service = s
         s.ui = this
-        intent?.getStringExtra("autostart")?.let { s.autostart = it }
-        terminal.attachSession(s.ensureSession())
-        terminal.requestFocus()
-        terminal.onScreenUpdated()
+        s.requestSession("tui") { session ->
+            terminal.attachSession(session)
+            terminal.requestFocus()
+            terminal.onScreenUpdated()
+        }
     }
 
     override fun onServiceDisconnected(name: ComponentName?) {
@@ -115,6 +116,7 @@ class MainActivity : Activity(), ServiceConnection, TerminalViewClient, Terminal
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(getColor(R.color.bar))
         }
+        row.addView(key("▣ GUI") { Modes.open(this, "gui"); finish() })
         row.addView(key("⌨") { toggleKeyboard() })
         row.addView(key("Esc") { send("\u001b") })
         row.addView(key("Tab") { send("\t") })

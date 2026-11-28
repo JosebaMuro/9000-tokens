@@ -14,26 +14,23 @@ import (
 	zone "github.com/lrstanley/bubblezone"
 )
 
-var version = "1.0.0"
+var version = "1.2.0"
 
-const usage = `Infinito %s: frontend de terminal para OmniRoute y FreeLLMAPI,
-con pasarela de IA gratis integrada. Todo va dentro de este binario.
+const usage = `Infinito %s: chat de IA gratis con FreeLLMAPI, con interfaz gráfica
+(GUI) y de terminal (TUI). Todo va dentro de este binario, sin internet.
 
 Uso:
-  infinito                 abre la interfaz (TUI)
-  infinito serve [omniroute] [freellmapi]
-                           arranca la pasarela integrada (y los repos que
-                           indiques) sin interfaz
-  infinito install         instala Node, OmniRoute y FreeLLMAPI desde el
-                           paquete offline incluido en el binario
-  infinito claude [args]   abre Claude Code conectado a la pasarela integrada
-  infinito env             muestra las variables para conectar Claude Code
+  infinito                 pregunta si abrir la GUI o la TUI
+  infinito gui             abre la interfaz gráfica en el navegador
+  infinito gui --no-open   sirve la interfaz gráfica sin abrir el navegador
+  infinito tui             abre la interfaz de terminal
+  infinito serve           solo arranca FreeLLMAPI (API en :3001), sin interfaz
+  infinito install         instala Node y FreeLLMAPI desde el paquete incluido
   infinito config          muestra dónde está el archivo de configuración
   infinito version         muestra la versión
 
-Pasarela integrada (por defecto):
-  OpenAI:    http://127.0.0.1:8686/v1      modelo: auto
-  Anthropic: http://127.0.0.1:8686
+Los archivos que genera el chat (respuestas, código, imágenes, vídeo y voz)
+se guardan en la carpeta Infinito de tu usuario.
 `
 
 func main() {
@@ -54,9 +51,28 @@ func main() {
 	}
 	switch cmd {
 	case "":
+		mode := cfg.StartMode
+		if mode == "" {
+			mode = chooseMode(cfg)
+		}
+		switch mode {
+		case "gui":
+			runGUI(cfg, true)
+		case "tui":
+			runTUI(cfg)
+		}
+	case "gui", "app":
+		open := true
+		for _, a := range args[1:] {
+			if strings.TrimLeft(a, "-") == "no-open" {
+				open = false
+			}
+		}
+		runGUI(cfg, open)
+	case "tui", "terminal":
 		runTUI(cfg)
-	case "serve", "server", "gateway":
-		runServe(cfg, args[1:])
+	case "serve", "server":
+		runServe(cfg)
 	case "install":
 		runInstall()
 	case "pack":
@@ -64,13 +80,6 @@ func main() {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
-	case "claude", "run":
-		if cmd == "run" && len(args) > 1 && args[1] == "claude" {
-			args = args[1:]
-		}
-		runClaude(cfg, args[1:])
-	case "env":
-		fmt.Print(envScript(claudeEnv(cfg.gatewayURL(), cfg.GatewayKey, "auto")))
 	case "config":
 		fmt.Println(cfg.path)
 	case "version", "v":
@@ -83,13 +92,18 @@ func main() {
 	}
 }
 
-func runTUI(cfg *Config) {
-	gw := NewGateway(cfg)
-	if cfg.GatewayAutoRun {
-		_ = gw.Start() // si el puerto está ocupado, el Panel lo indica
-	}
-	apps := NewAppManager(cfg)
-	autostart(apps)
+// onExit para FreeLLMAPI si se cierra la ventana o llega SIGTERM.
+func onExit(apps *AppManager, then func()) {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGHUP, syscall.SIGTERM)
+	go func() {
+		<-sig
+		apps.StopAll()
+		then()
+	}()
+}
+
+func setupTerminal() {
 	// Evita preguntar el color de fondo al terminal (algunos no contestan y
 	// la interfaz tardaría segundos en salir). Oscuro salvo que COLORFGBG
 	// diga lo contrario.
@@ -102,23 +116,47 @@ func runTUI(cfg *Config) {
 	}
 	lipgloss.SetHasDarkBackground(dark)
 	zone.NewGlobal()
-	p := tea.NewProgram(newModel(cfg, gw, apps), tea.WithAltScreen(), tea.WithMouseCellMotion())
-	// Si se cierra la ventana del terminal, no dejamos procesos huérfanos.
-	hup := make(chan os.Signal, 1)
-	signal.Notify(hup, syscall.SIGHUP, syscall.SIGTERM)
-	go func() {
-		<-hup
-		apps.StopAll()
-		gw.Stop()
-		p.Kill()
-	}()
+}
+
+func runTUI(cfg *Config) {
+	apps := NewAppManager(cfg)
+	core := NewCore(cfg, apps)
+	setupTerminal()
+	p := tea.NewProgram(newModel(cfg, core), tea.WithAltScreen(), tea.WithMouseCellMotion())
+	onExit(apps, func() { p.Kill() })
 	_, err := p.Run()
 	apps.StopAll()
-	gw.Stop()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Error:", err)
 		os.Exit(1)
 	}
+}
+
+func runGUI(cfg *Config, open bool) {
+	apps := NewAppManager(cfg)
+	core := NewCore(cfg, apps)
+	srv := NewGUIServer(cfg, core)
+	url, err := srv.Start()
+	if err != nil {
+		// Probablemente ya hay otro Infinito con la GUI abierta.
+		fmt.Fprintln(os.Stderr, "No pude abrir el puerto de la GUI:", err)
+		if open {
+			_ = openURL(cfg.guiURL() + "/")
+		}
+		os.Exit(1)
+	}
+	core.Boot()
+	fmt.Printf("Infinito %s: interfaz gráfica en %s\n", version, url)
+	if open {
+		if err := openURL(url); err != nil {
+			fmt.Println("Ábrela en tu navegador:", url)
+		}
+	}
+	fmt.Println("Deja esta ventana abierta mientras usas Infinito. Ctrl+C para salir.")
+	done := make(chan struct{})
+	onExit(apps, func() { close(done) })
+	<-done
+	srv.Stop()
 }
 
 func runInstall() {
@@ -144,84 +182,34 @@ func runInstall() {
 	}
 }
 
-func runServe(cfg *Config, which []string) {
-	gw := NewGateway(cfg)
+// runServe deja FreeLLMAPI en marcha sin interfaz (para usar su API).
+func runServe(cfg *Config) {
 	apps := NewAppManager(cfg)
-	for _, id := range which {
-		if err := apps.Start(strings.ToLower(id)); err != nil {
+	if !apps.Installed("freellmapi") {
+		if !hasPack() {
+			fmt.Fprintln(os.Stderr, "FreeLLMAPI no está instalado y este binario no lleva el paquete.")
+			os.Exit(1)
+		}
+		fmt.Println("Instalando FreeLLMAPI…")
+		if err := installPack(&progress{}, nil); err != nil {
 			fmt.Fprintln(os.Stderr, err)
-		} else {
-			fmt.Printf("%s arrancado (registro en %s)\n", appName(id), apps.proc(id).logPath)
+			os.Exit(1)
 		}
 	}
-	defer apps.StopAll()
-	if err := gw.Start(); err != nil {
-		fmt.Fprintln(os.Stderr, "No pude abrir el puerto:", err)
-		os.Exit(1)
-	}
-	fmt.Printf("Infinito %s: pasarela en marcha\n", version)
-	fmt.Printf("  OpenAI:    %s/v1\n  Anthropic: %s\n  Clave:     %s\n  Rutas:     %d\n", cfg.gatewayURL(), cfg.gatewayURL(), cfg.GatewayKey, len(gw.chain()))
-	if len(gw.chain()) == 0 {
-		fmt.Println("  Aviso: no hay proveedores con clave. Ejecuta 'infinito' y añade claves en Proveedores.")
-	}
-	fmt.Println("Ctrl+C para parar.")
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	seen := 0
-	tick := time.NewTicker(500 * time.Millisecond)
-	defer tick.Stop()
-	for {
-		select {
-		case <-sig:
-			gw.Stop()
-			return
-		case <-tick.C:
-			lines := gw.Logs(300)
-			if len(lines) < seen {
-				seen = 0
-			}
-			for _, l := range lines[seen:] {
-				fmt.Println(l)
-			}
-			seen = len(lines)
-		}
-	}
-}
-
-func runClaude(cfg *Config, extra []string) {
-	gw := NewGateway(cfg)
-	if err := gw.Start(); err != nil {
-		fmt.Fprintln(os.Stderr, "Aviso: el puerto ya está en uso, uso la pasarela que ya está en marcha:", err)
-	}
-	cmd, err := claudeCmd(claudeEnv(cfg.gatewayURL(), cfg.GatewayKey, "auto"), extra...)
-	if err != nil {
+	if err := apps.Start("freellmapi"); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
-	signal.Ignore(os.Interrupt)
-	err = cmd.Run()
-	gw.Stop()
-	if err != nil {
-		os.Exit(1)
+	fmt.Printf("Infinito %s: FreeLLMAPI en marcha\n  API:   %s/v1\n  Panel: %s\n  Registro: %s\n",
+		version, cfg.FreeLLMAPI.URL, cfg.FreeLLMAPI.Dashboard, apps.proc("freellmapi").logPath)
+	for i := 0; i < 60 && cfg.FreeLLMAPI.APIKey == ""; i++ {
+		time.Sleep(time.Second)
 	}
-}
-
-// autostart: INFINITO_AUTOSTART="omniroute,freellmapi" instala (si hace falta)
-// y arranca esos repos al abrir la interfaz. Lo usa la prueba del APK.
-func autostart(apps *AppManager) {
-	v := os.Getenv("INFINITO_AUTOSTART")
-	if v == "" {
-		return
+	if k := cfg.FreeLLMAPI.APIKey; k != "" {
+		fmt.Println("  Clave:", k)
 	}
-	go func() {
-		if !nodeInstalled() && hasPack() {
-			_ = installPack(&progress{}, nil)
-		}
-		for _, id := range strings.Split(v, ",") {
-			if id = strings.TrimSpace(strings.ToLower(id)); id != "" {
-				_ = apps.Start(id)
-			}
-		}
-	}()
+	fmt.Println("Ctrl+C para parar.")
+	done := make(chan struct{})
+	onExit(apps, func() { close(done) })
+	<-done
 }

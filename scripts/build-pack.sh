@@ -37,18 +37,6 @@ case "$TARGET" in
   *) echo "destino desconocido: $TARGET"; exit 2 ;;
 esac
 
-NPMFLAGS=(--no-audit --no-fund --loglevel=error)
-if [ "$TARGET" = termux-arm64 ]; then NPMFLAGS+=(--os=android --cpu=arm64 --ignore-scripts); fi
-
-echo "== OmniRoute"
-mkdir -p "$PACK/apps/omniroute"
-( cd "$PACK/apps/omniroute"
-  echo '{"name":"omniroute-offline","private":true}' > package.json
-  npm install "${NPMFLAGS[@]}" "omniroute@${OMNIROUTE_VERSION:-latest}" )
-case "$TARGET" in win-*) POS=win32;; termux-*) POS=android;; *) POS=linux;; esac
-PARCH=x64; case "$TARGET" in *arm64) PARCH=arm64;; esac
-node "$ROOT/scripts/prune.cjs" "$PACK/apps/omniroute/node_modules" $POS $PARCH
-OMNI_VER=$(node -p "require('$PACK/apps/omniroute/node_modules/omniroute/package.json').version" 2>/dev/null || echo "?")
 
 echo "== FreeLLMAPI"
 git clone --depth 1 ${FREELLMAPI_REF:+--branch "$FREELLMAPI_REF"} https://github.com/tashfeenahmed/freellmapi "$WORK/freellmapi"
@@ -67,7 +55,7 @@ FL_VER=$(node -p "require('$WORK/freellmapi/server/package.json').version")
 mv "$WORK/freellmapi" "$PACK/apps/freellmapi"
 
 cat > "$PACK/pack.json" <<JSON
-{"target":"$TARGET","built":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","versions":{"infinito":"$VERSION","node":"$NODE_VER","omniroute":"$OMNI_VER","freellmapi":"$FL_VER"}}
+{"target":"$TARGET","built":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","versions":{"infinito":"$VERSION","node":"$NODE_VER","freellmapi":"$FL_VER"}}
 JSON
 cat "$PACK/pack.json"
 

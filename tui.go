@@ -1,11 +1,7 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -50,15 +46,14 @@ var (
 	sBtnBad = lipgloss.NewStyle().Padding(0, 1).Foreground(lipgloss.Color("#FFFFFF")).Background(cBad)
 )
 
-var tabNames = []string{"Inicio", "Chat", "Modelos", "Proveedores", "Claude Code", "Guías", "Ajustes"}
-var tabShort = []string{"Inicio", "Chat", "Modelos", "Prov.", "Claude", "Guías", "Ajustes"}
+var tabNames = []string{"Inicio", "Chat", "Archivos", "Modelos", "Guías", "Ajustes"}
+var tabShort = []string{"Inicio", "Chat", "Archivos", "Modelos", "Guías", "Ajustes"}
 
 const (
 	tabHome = iota
 	tabChat
+	tabFiles
 	tabModels
-	tabProviders
-	tabClaude
 	tabGuides
 	tabSettings
 )
@@ -66,31 +61,20 @@ const (
 // ---------- Mensajes ----------
 
 type tickMsg time.Time
-type backendStatusMsg struct {
-	id  string
-	n   int
-	err error
-}
+type statusMsg struct{}
 type modelsMsg struct {
-	backend string
-	list    []string
-	err     error
+	list []string
+	err  error
 }
 type chatEvMsg struct {
 	ev chatEvent
 	ch <-chan chatEvent
 }
-type provTestMsg struct {
-	id, out string
-	err     error
-}
-type provModelsMsg struct {
-	id   string
-	list []string
+type mediaDoneMsg struct {
+	kind string
 	err  error
 }
-type execDoneMsg struct{ err error }
-type installDoneMsg struct{ err error }
+type flashMsg string
 
 // ---------- Botones y zonas clicables ----------
 
@@ -371,20 +355,9 @@ func truncate(s string, n int) string {
 
 // ---------- Modelo principal ----------
 
-type bstatus struct {
-	checked bool
-	n       int
-	err     error
-}
-
-type storedMsg struct {
-	chatMsg
-	Via string `json:"via,omitempty"`
-}
-
 type model struct {
 	cfg  *Config
-	gw   *Gateway
+	core *Core
 	apps *AppManager
 	w, h int
 	tab  int
@@ -392,42 +365,30 @@ type model struct {
 	zones     []string
 	flash     string
 	flashTime time.Time
+	st        Status
+	ticks     int
 
-	// Inicio
-	status     map[string]bstatus
-	installing bool
-	installPr  *progress
-	installErr string
-	logView    string // id de la app cuyo registro se muestra
-	logVP      viewport.Model
+	// Registro de FreeLLMAPI
+	logOpen bool
+	logVP   viewport.Model
 
 	// Chat
 	vp        viewport.Model
 	ta        textarea.Model
-	history   []storedMsg
 	partial   string
 	streaming bool
-	cancel    context.CancelFunc
 	chatRoute string
-	chatErr   string
+	histLen   int
+
+	// Archivos
+	files      []FileInfo
+	fcursor    int
+	confirmDel string
 
 	// Modelos
-	modelsBackend int
-	models        map[string][]string
-	modelsErr     map[string]string
-	modelsLoading bool
 	mlist         *pickList
-
-	// Proveedores
-	pcursor int
-	pform   *form
-	pformID string
-	ppick   *pickList
-	ppickID string
-	pmsg    map[string]string
-
-	// Claude
-	ccursor int
+	modelsErr     string
+	modelsLoading bool
 
 	// Guías
 	guides  []guide
@@ -438,7 +399,7 @@ type model struct {
 	sform *form
 }
 
-func newModel(cfg *Config, gw *Gateway, apps *AppManager) *model {
+func newModel(cfg *Config, core *Core) *model {
 	ta := textarea.New()
 	ta.Placeholder = "Escribe tu mensaje… (Enter envía · Alt+Enter salto de línea)"
 	ta.ShowLineNumbers = false
@@ -447,47 +408,29 @@ func newModel(cfg *Config, gw *Gateway, apps *AppManager) *model {
 	ta.SetHeight(3)
 	ta.KeyMap.InsertNewline.SetKeys("alt+enter", "ctrl+j")
 	m := &model{
-		cfg: cfg, gw: gw, apps: apps,
-		status:    map[string]bstatus{},
-		ta:        ta,
-		vp:        viewport.New(80, 20),
-		gvp:       viewport.New(80, 20),
-		logVP:     viewport.New(80, 20),
-		models:    map[string][]string{},
-		modelsErr: map[string]string{},
-		pmsg:      map[string]string{},
-		guides:    loadGuides(),
+		cfg: cfg, core: core, apps: core.apps,
+		ta:     ta,
+		vp:     viewport.New(80, 20),
+		gvp:    viewport.New(80, 20),
+		logVP:  viewport.New(80, 20),
+		guides: loadGuides(),
+		tab:    tabChat,
 	}
-	m.loadHistory()
-	for i, b := range cfg.backends() {
-		if b.ID == cfg.ChatBackend {
-			m.modelsBackend = i
-		}
-	}
+	m.st = core.Status()
 	return m
 }
 
-func historyPath() string { return filepath.Join(configDir(), "chat.json") }
-
-func (m *model) loadHistory() {
-	b, err := os.ReadFile(historyPath())
-	if err == nil {
-		_ = json.Unmarshal(b, &m.history)
-	}
-}
-
-func (m *model) saveHistory() {
-	b, _ := json.MarshalIndent(m.history, "", " ")
-	_ = os.MkdirAll(configDir(), 0o700)
-	_ = os.WriteFile(historyPath(), b, 0o600)
-}
-
 func (m *model) Init() tea.Cmd {
-	return tea.Batch(m.checkBackends(), tick(), tea.SetWindowTitle("Infinito"))
+	m.core.Boot()
+	return tea.Batch(m.refresh(), tick(), tea.SetWindowTitle("Infinito"), m.ta.Focus())
 }
 
 func tick() tea.Cmd {
 	return tea.Tick(500*time.Millisecond, func(t time.Time) tea.Msg { return tickMsg(t) })
+}
+
+func (m *model) refresh() tea.Cmd {
+	return func() tea.Msg { m.core.Refresh(); return statusMsg{} }
 }
 
 func (m *model) setFlash(s string) {
@@ -495,35 +438,17 @@ func (m *model) setFlash(s string) {
 	m.flashTime = time.Now()
 }
 
-func (m *model) checkBackends() tea.Cmd {
-	var cmds []tea.Cmd
-	for _, b := range m.cfg.backends() {
-		b := b
-		cmds = append(cmds, func() tea.Msg {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			l, err := listModels(ctx, v1(b.URL), b.APIKey)
-			return backendStatusMsg{id: b.ID, n: len(l), err: err}
-		})
-	}
-	return tea.Batch(cmds...)
-}
-
-func (m *model) loadModels(b Backend) tea.Cmd {
+func (m *model) loadModels() tea.Cmd {
 	m.modelsLoading = true
 	return func() tea.Msg {
-		l, err := listModels(context.Background(), v1(b.URL), b.APIKey)
-		return modelsMsg{backend: b.ID, list: l, err: err}
+		l, err := m.core.Models()
+		return modelsMsg{list: l, err: err}
 	}
 }
 
 func (m *model) inputActive() bool {
 	switch {
-	case m.tab == tabChat:
-		return true
-	case m.tab == tabProviders && (m.pform != nil || (m.ppick != nil && m.ppick.filtOn)):
-		return true
-	case m.tab == tabSettings:
+	case m.tab == tabChat, m.tab == tabSettings:
 		return true
 	case m.tab == tabModels && m.mlist != nil && m.mlist.filtOn:
 		return true
@@ -533,6 +458,7 @@ func (m *model) inputActive() bool {
 
 func (m *model) switchTab(t int) tea.Cmd {
 	m.tab = (t + len(tabNames)) % len(tabNames)
+	m.confirmDel = ""
 	var cmds []tea.Cmd
 	if m.tab == tabChat {
 		cmds = append(cmds, m.ta.Focus())
@@ -542,20 +468,17 @@ func (m *model) switchTab(t int) tea.Cmd {
 	}
 	switch m.tab {
 	case tabModels:
-		b := m.cfg.backends()[m.modelsBackend]
-		if l, ok := m.models[b.ID]; ok {
-			if m.mlist == nil {
-				m.mlist = newPickList("mlist", l, false, nil)
-			}
-		} else {
-			cmds = append(cmds, m.loadModels(b))
+		if m.mlist == nil {
+			cmds = append(cmds, m.loadModels())
 		}
+	case tabFiles:
+		m.files = ListFiles()
 	case tabSettings:
 		m.openSettings()
 	case tabGuides:
 		m.refreshGuide()
 	case tabHome:
-		cmds = append(cmds, m.checkBackends())
+		cmds = append(cmds, m.refresh())
 	}
 	return tea.Batch(cmds...)
 }
@@ -593,69 +516,64 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.flash != "" && time.Since(m.flashTime) > 7*time.Second {
 			m.flash = ""
 		}
-		if m.logView != "" {
+		if m.logOpen {
 			m.refreshLog()
 		}
-		return m, tick()
+		m.st = m.core.Status()
+		// La conversación también cambia mientras se genera multimedia.
+		if n := len(m.core.History()); n != m.histLen && !m.streaming {
+			m.renderChat()
+		}
+		m.ticks++
+		var cmds []tea.Cmd
+		cmds = append(cmds, tick())
+		if m.ticks%6 == 0 {
+			cmds = append(cmds, m.refresh())
+		}
+		if m.tab == tabFiles && m.ticks%4 == 0 {
+			m.files = ListFiles()
+		}
+		return m, tea.Batch(cmds...)
 
-	case backendStatusMsg:
-		m.status[msg.id] = bstatus{checked: true, n: msg.n, err: msg.err}
+	case statusMsg:
+		m.st = m.core.Status()
 		return m, nil
 
-	case installDoneMsg:
-		m.installing = false
-		if msg.err != nil {
-			m.installErr = msg.err.Error()
-			m.setFlash("La instalación falló: " + msg.err.Error())
-		} else {
-			m.installErr = ""
-			m.setFlash("Instalado. Pulsa Arrancar en la pasarela que quieras usar.")
-		}
+	case flashMsg:
+		m.setFlash(string(msg))
 		return m, nil
 
 	case modelsMsg:
 		m.modelsLoading = false
 		if msg.err != nil {
-			m.modelsErr[msg.backend] = msg.err.Error()
+			m.modelsErr = msg.err.Error()
+			m.mlist = nil
 		} else {
-			delete(m.modelsErr, msg.backend)
-			m.models[msg.backend] = msg.list
-		}
-		if m.cfg.backends()[m.modelsBackend].ID == msg.backend {
-			m.mlist = newPickList("mlist", m.models[msg.backend], false, nil)
+			m.modelsErr = ""
+			l := msg.list
+			if !contains(l, "auto") {
+				l = append([]string{"auto"}, l...)
+			}
+			m.mlist = newPickList("mlist", l, false, nil)
+			for i, x := range l {
+				if x == m.core.model() {
+					m.mlist.cursor = i
+				}
+			}
 		}
 		return m, nil
 
 	case chatEvMsg:
 		return m, m.onChatEvent(msg)
 
-	case provTestMsg:
+	case mediaDoneMsg:
 		if msg.err != nil {
-			m.pmsg[msg.id] = sBad.Render("✗ " + short(msg.err.Error(), 200))
+			m.setFlash("No se pudo generar: " + short(msg.err.Error(), 120))
 		} else {
-			m.pmsg[msg.id] = sOK.Render("✓ responde: " + msg.out)
+			m.setFlash("Listo. Lo tienes en Archivos y en " + filesDir())
 		}
+		m.renderChat()
 		return m, nil
-
-	case provModelsMsg:
-		if msg.err != nil {
-			m.pmsg[msg.id] = sBad.Render("✗ " + short(msg.err.Error(), 200))
-			return m, nil
-		}
-		if p := m.providerByID(msg.id); p != nil {
-			m.ppick = newPickList("ppick", msg.list, true, p.Models)
-			m.ppickID = msg.id
-			m.pmsg[msg.id] = sDim.Render(fmt.Sprintf("%d modelos disponibles", len(msg.list)))
-		}
-		return m, nil
-
-	case execDoneMsg:
-		if msg.err != nil {
-			m.setFlash("Terminó con error: " + msg.err.Error())
-		} else {
-			m.setFlash("Has vuelto de Claude Code")
-		}
-		return m, m.checkBackends()
 
 	case tea.MouseMsg:
 		return m, m.onMouse(msg)
@@ -698,7 +616,7 @@ func (m *model) onMouse(msg tea.MouseMsg) tea.Cmd {
 
 func (m *model) scroll(d int) tea.Cmd {
 	switch {
-	case m.logView != "":
+	case m.logOpen:
 		if d < 0 {
 			m.logVP.LineUp(-d)
 		} else {
@@ -718,12 +636,8 @@ func (m *model) scroll(d int) tea.Cmd {
 		}
 	case m.tab == tabModels && m.mlist != nil:
 		m.mlist.scroll(d)
-	case m.tab == tabProviders && m.ppick != nil:
-		m.ppick.scroll(d)
-	case m.tab == tabProviders && m.pform == nil:
-		m.pcursor = min(len(m.cfg.Providers)-1, max(0, m.pcursor+d/3))
-	case m.tab == tabClaude:
-		m.ccursor = min(len(m.claudeOpts())-1, max(0, m.ccursor+d/3))
+	case m.tab == tabFiles:
+		m.fcursor = min(max(0, len(m.files)-1), max(0, m.fcursor+d/3))
 	case m.tab == tabSettings && m.sform != nil:
 		m.sform.move(d / 3)
 	}
@@ -732,7 +646,7 @@ func (m *model) scroll(d int) tea.Cmd {
 
 // act ejecuta la acción de un botón o zona pulsada.
 func (m *model) act(id string) tea.Cmd {
-	parts := strings.Split(id, ":")
+	parts := strings.SplitN(id, ":", 3)
 	arg := func(i int) string {
 		if i < len(parts) {
 			return parts[i]
@@ -746,11 +660,14 @@ func (m *model) act(id string) tea.Cmd {
 	case "quit":
 		return m.quit()
 	case "home":
-		return m.homeAction(arg(1), arg(2))
+		return m.homeAction(arg(1))
 	case "chat":
 		return m.chatAction(arg(1), arg(2))
-	case "mback":
-		return m.setModelsBackend(num(1))
+	case "file":
+		return m.fileAction(arg(1), arg(2))
+	case "frow":
+		m.fcursor = num(1)
+		m.confirmDel = ""
 	case "mlist":
 		if m.mlist == nil {
 			return nil
@@ -759,7 +676,9 @@ func (m *model) act(id string) tea.Cmd {
 			m.mlist.filtOn = true
 			return m.mlist.filter.Focus()
 		}
-		m.mlist.cursor = num(2)
+		if arg(1) == "row" {
+			m.mlist.cursor = num(2)
+		}
 		return m.keyModels(tea.KeyMsg{Type: tea.KeyEnter})
 	case "mact":
 		switch arg(1) {
@@ -770,34 +689,8 @@ func (m *model) act(id string) tea.Cmd {
 		case "filter":
 			return m.act("mlist:filter")
 		}
-	case "prow":
-		m.pcursor = num(1)
-		if arg(2) == "toggle" {
-			return m.keyProviders(keyRune(' '))
-		}
-	case "pact":
-		return m.providerAction(arg(1))
-	case "ppick":
-		if m.ppick == nil {
-			return nil
-		}
-		switch arg(1) {
-		case "filter":
-			m.ppick.filtOn = true
-			return m.ppick.filter.Focus()
-		case "row":
-			m.ppick.cursor = num(2)
-			return m.keyProviders(keyRune(' '))
-		case "save":
-			return m.keyProviders(tea.KeyMsg{Type: tea.KeyEnter})
-		case "cancel":
-			return m.keyProviders(tea.KeyMsg{Type: tea.KeyEsc})
-		}
-	case "pform", "sform":
-		f := m.pform
-		if parts[0] == "sform" {
-			f = m.sform
-		}
+	case "sform":
+		f := m.sform
 		if f == nil {
 			return nil
 		}
@@ -805,21 +698,18 @@ func (m *model) act(id string) tea.Cmd {
 		case "field":
 			f.setFocus(num(2))
 		case "save":
-			return m.formSubmit(parts[0])
+			return m.keySettings(tea.KeyMsg{Type: tea.KeyEnter})
 		case "cancel":
-			return m.formCancel(parts[0])
+			return m.keySettings(tea.KeyMsg{Type: tea.KeyEsc})
 		case "reveal":
 			f.toggleSecret()
 		}
-	case "claude":
-		m.ccursor = num(1)
-		return m.keyClaude("enter")
 	case "guide":
 		m.gcursor = num(1)
 		m.refreshGuide()
 	case "log":
 		if arg(1) == "close" {
-			m.logView = ""
+			m.logOpen = false
 		}
 	}
 	return nil
@@ -828,9 +718,7 @@ func (m *model) act(id string) tea.Cmd {
 func keyRune(r rune) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}} }
 
 func (m *model) quit() tea.Cmd {
-	if m.streaming && m.cancel != nil {
-		m.cancel()
-	}
+	m.core.Stop()
 	return tea.Quit
 }
 
@@ -839,18 +727,17 @@ func (m *model) onKey(k tea.KeyMsg) tea.Cmd {
 	if s == "ctrl+c" {
 		return m.quit()
 	}
-	if m.logView != "" {
+	if m.logOpen {
 		switch s {
 		case "esc", "q", "enter":
-			m.logView = ""
+			m.logOpen = false
 			return nil
 		}
 		var c tea.Cmd
 		m.logVP, c = m.logVP.Update(k)
 		return c
 	}
-	modal := (m.tab == tabProviders && (m.pform != nil || m.ppick != nil)) || m.tab == tabSettings
-	if !modal {
+	if m.tab != tabSettings {
 		if s == "tab" {
 			return m.switchTab(m.tab + 1)
 		}
@@ -877,12 +764,10 @@ func (m *model) onKey(k tea.KeyMsg) tea.Cmd {
 		return m.keyHome(s)
 	case tabChat:
 		return m.keyChat(k)
+	case tabFiles:
+		return m.keyFiles(s)
 	case tabModels:
 		return m.keyModels(k)
-	case tabProviders:
-		return m.keyProviders(k)
-	case tabClaude:
-		return m.keyClaude(s)
 	case tabGuides:
 		return m.keyGuides(k)
 	case tabSettings:
@@ -923,22 +808,20 @@ func (m *model) View() string {
 
 	bodyH := max(1, m.h-lipgloss.Height(header)-2)
 	var body string
-	if m.logView != "" {
+	if m.logOpen {
 		body = m.viewLog()
 	} else {
 		switch m.tab {
 		case tabHome:
-			body = m.viewHome(bodyH)
+			body = m.viewHome()
 		case tabChat:
-			body = m.viewChat()
+			body = m.viewChat(bodyH)
+		case tabFiles:
+			body = m.viewFiles(bodyH)
 		case tabModels:
 			body = m.viewModels(bodyH)
-		case tabProviders:
-			body = m.viewProviders(bodyH)
-		case tabClaude:
-			body = m.viewClaude()
 		case tabGuides:
-			body = m.viewGuides()
+			body = m.viewGuides(bodyH)
 		case tabSettings:
 			if m.sform == nil {
 				m.openSettings()
@@ -957,15 +840,13 @@ func (m *model) footer() string {
 	var h string
 	switch m.tab {
 	case tabHome:
-		h = "Toca un botón o usa r comprobar · i instalar todo"
+		h = "Toca un botón · r comprobar"
 	case tabChat:
-		h = "Enter enviar · Alt+Enter línea · Esc parar"
+		h = "Enter enviar · Alt+Enter línea · Esc parar · /ayuda"
+	case tabFiles:
+		h = "↑/↓ elegir · Enter abrir · d borrar"
 	case tabModels:
 		h = "Toca un modelo para usarlo en el chat"
-	case tabProviders:
-		h = "Toca una fila y luego un botón"
-	case tabClaude:
-		h = "Toca una opción para lanzarla"
 	case tabGuides:
 		h = "Rueda o PgUp/PgDn para leer"
 	case tabSettings:
@@ -973,15 +854,15 @@ func (m *model) footer() string {
 	}
 	nav := "Tab pestañas · Ctrl+C salir"
 	if !m.inputActive() {
-		nav = "1-7 pestañas · q salir"
+		nav = "1-6 pestañas · q salir"
 	}
 	return lipgloss.NewStyle().MaxWidth(m.w).Render(sHelp.Render(" " + h + " · " + nav))
 }
 
-// ---------- Registro de una app ----------
+// ---------- Registro de FreeLLMAPI ----------
 
 func (m *model) refreshLog() {
-	lines := m.apps.Log(m.logView, 400)
+	lines := m.apps.Log("freellmapi", 400)
 	atBottom := m.logVP.AtBottom()
 	m.logVP.SetContent(lipgloss.NewStyle().Width(m.logVP.Width).Render(strings.Join(lines, "\n")))
 	if atBottom {
@@ -990,21 +871,11 @@ func (m *model) refreshLog() {
 }
 
 func (m *model) viewLog() string {
-	head := sTitle.Render("Registro de "+appName(m.logView)) + "  " + m.btn("log:close", "Cerrar", sBtnPri)
+	head := sTitle.Render("Registro de FreeLLMAPI") + "  " + m.btn("log:close", "Cerrar", sBtnPri)
 	return head + "\n" + m.logVP.View()
 }
 
 // ---------- Utilidades ----------
-
-func splitList(s string) []string {
-	var out []string
-	for _, x := range strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == '\n' || r == ';' }) {
-		if x = strings.TrimSpace(x); x != "" {
-			out = append(out, x)
-		}
-	}
-	return out
-}
 
 func contains(l []string, s string) bool {
 	for _, x := range l {
@@ -1023,4 +894,14 @@ func maskKey(k string) string {
 		return "••••"
 	}
 	return k[:4] + "…" + k[len(k)-4:]
+}
+
+func humanSize(n int64) string {
+	switch {
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.0f KB", float64(n)/(1<<10))
+	}
+	return fmt.Sprintf("%d B", n)
 }

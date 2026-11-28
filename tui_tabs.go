@@ -1,80 +1,39 @@
 package main
 
 import (
-	"context"
 	"fmt"
-	"os"
-	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
 // ======================= Inicio =======================
 
-func (m *model) startInstall(only map[string]bool) tea.Cmd {
-	if m.installing {
-		return nil
-	}
-	if !hasPack() {
-		m.setFlash("Este binario es la versión ligera: descarga la versión completa del release para instalar sin internet")
-		return nil
-	}
-	m.apps.StopAll()
-	m.installing = true
-	m.installErr = ""
-	m.installPr = &progress{}
-	pr := m.installPr
-	return func() tea.Msg { return installDoneMsg{installPack(pr, only)} }
-}
-
-func (m *model) homeAction(what, id string) tea.Cmd {
+func (m *model) homeAction(what string) tea.Cmd {
 	switch what {
 	case "install":
-		if id == "all" {
-			return m.startInstall(nil)
+		if !hasPack() {
+			m.setFlash("Este binario es la versión ligera: descarga la versión completa del release para instalar sin internet")
+			return nil
 		}
-		return m.startInstall(map[string]bool{"runtime": !nodeInstalled(), id: true})
+		m.core.Install()
+		m.setFlash("Instalando FreeLLMAPI…")
 	case "start":
-		if id == "infinito" {
-			if err := m.gw.Start(); err != nil {
-				m.setFlash("No arranca: " + err.Error())
-			}
-			return m.checkBackends()
-		}
-		if err := m.apps.Start(id); err != nil {
+		if err := m.apps.Start("freellmapi"); err != nil {
 			m.setFlash(err.Error())
 			return nil
 		}
-		m.setFlash(appName(id) + " arrancando… tarda unos segundos")
-		return tea.Sequence(tea.Tick(6*time.Second, func(time.Time) tea.Msg { return nil }), m.checkBackends())
+		m.setFlash("FreeLLMAPI arrancando… tarda unos segundos")
 	case "stop":
-		if id == "infinito" {
-			m.gw.Stop()
-		} else {
-			m.apps.Stop(id)
-		}
-		m.setFlash(appName(id) + " detenido")
-		return tea.Sequence(tea.Tick(time.Second, func(time.Time) tea.Msg { return nil }), m.checkBackends())
-	case "use":
-		m.cfg.ChatBackend = id
-		m.cfg.ChatModel = "auto"
-		_ = m.cfg.Save()
-		for i, b := range m.cfg.backends() {
-			if b.ID == id {
-				m.modelsBackend = i
-			}
-		}
-		m.setFlash("Ahora el chat usa " + appName(id) + ". La conversación se mantiene.")
-		return m.switchTab(tabChat)
+		m.apps.Stop("freellmapi")
+		m.setFlash("FreeLLMAPI detenido")
 	case "web":
-		u := m.cfg.backendByID(id).Dashboard
+		u := m.cfg.FreeLLMAPI.Dashboard
 		if u == "" {
-			u = m.cfg.backendByID(id).URL
+			u = m.cfg.FreeLLMAPI.URL
 		}
 		if err := openURL(u); err != nil {
 			m.setFlash(err.Error())
@@ -82,237 +41,222 @@ func (m *model) homeAction(what, id string) tea.Cmd {
 			m.setFlash("Abriendo " + u)
 		}
 	case "log":
-		m.logView = id
+		m.logOpen = true
 		m.refreshLog()
 		m.logVP.GotoBottom()
-	case "providers":
-		return m.switchTab(tabProviders)
-	case "refresh":
-		m.status = map[string]bstatus{}
-		return m.checkBackends()
+	case "files":
+		return m.switchTab(tabFiles)
+	case "chat":
+		return m.switchTab(tabChat)
 	}
-	return nil
+	return m.refresh()
 }
 
 func (m *model) keyHome(s string) tea.Cmd {
 	switch s {
 	case "r":
-		return m.homeAction("refresh", "")
+		return m.refresh()
 	case "i":
-		return m.homeAction("install", "all")
-	case "g":
-		if on, _ := m.gw.Running(); on {
-			return m.homeAction("stop", "infinito")
-		}
-		return m.homeAction("start", "infinito")
+		return m.homeAction("install")
+	case "l":
+		return m.homeAction("log")
 	}
 	return nil
 }
 
-func (m *model) running(id string) bool {
-	if id == "infinito" {
-		on, _ := m.gw.Running()
-		return on
-	}
-	return m.apps.Running(id)
+func progressBar(pct float64, w int) string {
+	w = max(10, w)
+	fill := int(pct * float64(w))
+	return sOK.Render(strings.Repeat("█", fill)) + sDim.Render(strings.Repeat("░", w-fill))
 }
 
-func (m *model) viewHome(height int) string {
+func (m *model) viewHome() string {
+	st := m.st
 	var sb strings.Builder
 	cw := min(m.w, 100)
 	inner := cw - 4
 
-	if m.installing && m.installPr != nil {
-		done, total := m.installPr.done.Load(), m.installPr.total.Load()
-		pct := 0.0
-		if total > 0 {
-			pct = float64(done) / float64(total)
-		}
-		barW := max(10, inner-8)
-		fill := int(pct * float64(barW))
-		bar := sOK.Render(strings.Repeat("█", fill)) + sDim.Render(strings.Repeat("░", barW-fill))
-		f, _ := m.installPr.file.Load().(string)
-		sb.WriteString(sCardOn.Width(cw - 2).Render(sTitle.Render("Instalando sin internet…") + "\n" + bar + fmt.Sprintf(" %3.0f%%", pct*100) + "\n" + sDim.Render(truncate(f, inner))))
-		sb.WriteString("\n")
-	} else if hasPack() && (m.apps.Installed("omniroute") || m.apps.Installed("freellmapi")) && packOutdated() {
-		msg := sTitle.Render("Hay una versión nueva del paquete") + "\n" +
-			"Este binario trae versiones más nuevas de Node.js, OmniRoute o FreeLLMAPI. Tus claves y datos se conservan.\n" +
-			m.btn("home:install:all", "Actualizar", sBtnPri)
-		sb.WriteString(sCardOn.Width(cw-2).Render(msg) + "\n")
-	} else if hasPack() && (!m.apps.Installed("omniroute") || !m.apps.Installed("freellmapi")) {
-		msg := sTitle.Render("Paquete offline incluido") + "\n" +
-			"Este binario trae Node.js, OmniRoute y FreeLLMAPI. Instálalos una vez y funcionan sin internet.\n" +
-			m.btn("home:install:all", "Instalar todo", sBtnPri)
-		if m.installErr != "" {
-			msg += "\n" + sBad.Render("Último error: "+m.installErr)
-		}
-		sb.WriteString(sCardOn.Width(cw-2).Render(msg) + "\n")
+	var state string
+	switch {
+	case st.Installing:
+		state = sWarn.Render("● instalando…")
+	case !st.Installed:
+		state = sDim.Render("○ no instalado")
+	case st.OK:
+		state = sOK.Render(fmt.Sprintf("● en marcha · %d modelos", st.Models))
+	case st.Running:
+		state = sWarn.Render("● arrancando…")
+	case st.Error != "":
+		state = sBad.Render("● " + short(st.Error, 80))
+	default:
+		state = sDim.Render("○ parado")
 	}
-
-	for _, b := range m.cfg.backends() {
-		id := b.ID
-		st, checked := m.status[id]
-		active := m.cfg.ChatBackend == id
-		var state string
-		switch {
-		case checked && st.err == nil && id == "infinito" && m.running(id):
-			state = sOK.Render("● en marcha")
-		case checked && st.err == nil && id != "infinito":
-			state = sOK.Render(fmt.Sprintf("● en marcha · %d modelos", st.n))
-		case m.running(id):
-			state = sWarn.Render("● arrancando…")
-		case checked && st.err != nil && strings.Contains(st.err.Error(), "HTTP 401"):
-			state = sWarn.Render("● en marcha · falta la clave (Ajustes)")
-		default:
-			state = sDim.Render("○ parado")
-			if id != "infinito" {
-				if err := m.apps.LastError(id); err != nil {
-					state = sBad.Render("● " + short(err.Error(), 50))
-				}
-			}
-		}
-		name := sBold.Render(appName(id))
-		if active {
-			name += " " + sSel.Render("★ en uso")
-		}
-		desc := ""
-		switch id {
-		case "infinito":
-			n := len(m.gw.chain())
-			desc = fmt.Sprintf("Incluida en este programa · %d rutas en la cadena", n)
-			if n == 0 {
-				desc = sWarn.Render("Sin claves todavía: pulsa Proveedores")
-			}
-		case "omniroute":
-			desc = "150+ proveedores gratis · panel web en " + b.Dashboard
-		case "freellmapi":
-			desc = "87 proveedores gratis · panel web en " + b.Dashboard
-		}
-		var btns []string
-		installed := id == "infinito" || m.apps.Installed(id)
-		ext := false // en marcha fuera de Infinito
-		if id != "infinito" && checked && st.err == nil && !m.apps.Running(id) {
-			ext = true
-		}
-		switch {
-		case !installed && !ext:
-			if hasPack() {
-				btns = append(btns, m.btn("home:install:"+id, "Instalar", sBtnPri))
-			} else {
-				btns = append(btns, sDim.Render("No instalado (guía en Guías)"))
-			}
-		case m.running(id):
-			btns = append(btns, m.btn("home:stop:"+id, "Parar", sBtnBad))
-		case !ext:
-			btns = append(btns, m.btn("home:start:"+id, "Arrancar", sBtnPri))
-		}
-		if !active {
-			btns = append(btns, m.btn("home:use:"+id, "Usar en el chat", sBtn))
-		}
-		if id == "infinito" {
-			btns = append(btns, m.btn("home:providers:", "Proveedores", sBtn))
-		} else {
-			btns = append(btns, m.btn("home:web:"+id, "Panel web", sBtn))
-			if m.apps.Installed(id) {
-				btns = append(btns, m.btn("home:log:"+id, "Registro", sBtn))
-			}
-		}
-		content := name + "\n" + state + "\n" + sDim.Render(truncate(desc, inner*2)) + "\n" + row(inner, btns...)
-		cs := sCard
-		if active {
-			cs = sCardOn
-		}
-		sb.WriteString(cs.Width(cw-2).Render(content) + "\n")
+	content := sBold.Render("FreeLLMAPI") + "  " + state + "\n" +
+		sDim.Render(truncate("Chat de IA gratis con muchos proveedores · panel web en "+st.Dashboard, inner*2)) + "\n"
+	if st.Installing {
+		content += progressBar(st.Progress, inner-6) + fmt.Sprintf(" %3.0f%%", st.Progress*100) + "\n"
 	}
-	sb.WriteString(row(m.w, m.btn("home:refresh:", "Comprobar de nuevo", sBtn), m.btn("tab:4", "Lanzar Claude Code", sBtn), m.btn("tab:5", "Guías", sBtn)))
+	if st.InstallErr != "" {
+		content += sBad.Render(lipgloss.NewStyle().Width(inner).Render("La instalación falló: "+st.InstallErr)) + "\n"
+	}
+	if st.Outdated {
+		content += sWarn.Render("Este binario trae una versión más nueva. Pulsa Actualizar (tus claves se conservan).") + "\n"
+	}
+	var btns []string
+	switch {
+	case st.Installing:
+	case !st.Installed && st.HasPack:
+		btns = append(btns, m.btn("home:install", "Instalar", sBtnPri))
+	case !st.Installed:
+		btns = append(btns, sDim.Render("No instalado: usa la versión completa del release"))
+	case st.Running:
+		btns = append(btns, m.btn("home:stop", "Parar", sBtnBad))
+	case st.OK:
+	default:
+		btns = append(btns, m.btn("home:start", "Arrancar", sBtnPri))
+	}
+	if st.Outdated && !st.Installing {
+		btns = append(btns, m.btn("home:install", "Actualizar", sBtnPri))
+	}
+	if st.Installed {
+		btns = append(btns, m.btn("home:web", "Panel web", sBtn), m.btn("home:log", "Registro", sBtn))
+	}
+	btns = append(btns, m.btn("home:refresh", "Comprobar", sBtn))
+	content += row(inner, btns...)
+	cs := sCard
+	if st.OK {
+		cs = sCardOn
+	}
+	sb.WriteString(cs.Width(cw-2).Render(content) + "\n")
 
-	// Actividad de la pasarela integrada, si cabe.
-	used := lipgloss.Height(sb.String())
-	if rest := height - used - 2; rest >= 3 {
-		logs := m.gw.Logs(rest - 1)
-		if len(logs) > 0 {
-			sb.WriteString("\n" + sTitle.Render("Actividad") + "\n")
-			for _, l := range logs {
-				sb.WriteString(" " + sDim.Render(truncate(l, m.w-2)) + "\n")
-			}
-		}
+	chat := sBold.Render("Chat") + "  " + sDim.Render("modelo "+st.Model) + "\n" +
+		sDim.Render(lipgloss.NewStyle().Width(inner).Render("Responde con FreeLLMAPI. Desde el chat puedes generar imágenes, vídeo y voz, y guardar respuestas, código o la conversación entera.")) + "\n" +
+		row(inner, m.btn("home:chat", "Abrir el chat", sBtnPri), m.btn("tab:3", "Elegir modelo", sBtn))
+	sb.WriteString(sCard.Width(cw-2).Render(chat) + "\n")
+
+	files := sBold.Render("Archivos") + "\n" + sDim.Render(truncate(st.FilesDir, inner)) + "\n" +
+		row(inner, m.btn("home:files", "Ver archivos", sBtn))
+	sb.WriteString(sCard.Width(cw-2).Render(files) + "\n")
+	if !st.OK && st.Installed && !st.Running && !st.Installing {
+		sb.WriteString(sDim.Render(lipgloss.NewStyle().Width(cw).Render("FreeLLMAPI está parado: pulsa Arrancar. Se puede arrancar solo al abrir Infinito (Ajustes).")))
 	}
 	return sb.String()
 }
 
 // ======================= Chat =======================
 
-func (m *model) chatBackend() Backend { return m.cfg.backendByID(m.cfg.ChatBackend) }
+var chatHelp = "Comandos: /imagen TEXTO · /video TEXTO · /voz TEXTO · /guardar · /codigo · /exportar · /modelo NOMBRE · /sistema TEXTO · /nuevo"
 
 func (m *model) chatAction(what, arg string) tea.Cmd {
 	switch what {
 	case "send":
 		return m.keyChat(tea.KeyMsg{Type: tea.KeyEnter})
 	case "stop":
-		if m.streaming && m.cancel != nil {
-			m.cancel()
-		}
+		m.core.Stop()
 	case "new":
-		return m.keyChat(tea.KeyMsg{Type: tea.KeyCtrlN})
-	case "backend":
-		m.cfg.ChatBackend = arg
-		m.cfg.ChatModel = "auto"
-		_ = m.cfg.Save()
-		m.setFlash("Ahora respondes con " + appName(arg) + " · la conversación sigue")
-		return m.ta.Focus()
+		return m.newChat()
 	case "model":
-		for i, b := range m.cfg.backends() {
-			if b.ID == m.cfg.ChatBackend {
-				m.modelsBackend = i
-			}
-		}
-		m.mlist = nil
 		return m.switchTab(tabModels)
 	case "focus":
 		return m.ta.Focus()
+	case "image", "video", "audio":
+		text := strings.TrimSpace(m.ta.Value())
+		if text == "" {
+			what := map[string]string{"image": "la imagen", "video": "el vídeo", "audio": "lo que quieres oír"}[what]
+			m.setFlash("Escribe primero en el cuadro " + what + " y pulsa este botón")
+			return m.ta.Focus()
+		}
+		m.ta.Reset()
+		return m.media(what, text)
+	case "save":
+		return m.saveAnswer(-1)
+	case "saveidx":
+		n, _ := strconv.Atoi(arg)
+		return m.saveAnswer(n)
+	case "code":
+		names, err := m.core.SaveCode()
+		if err != nil {
+			m.setFlash(err.Error())
+		} else {
+			m.setFlash(fmt.Sprintf("Código guardado: %s (en %s)", strings.Join(names, ", "), filesDir()))
+		}
+	case "export":
+		n, err := m.core.ExportChat()
+		if err != nil {
+			m.setFlash(err.Error())
+		} else {
+			m.setFlash("Conversación guardada: " + filepath.Join(filesDir(), n))
+		}
 	}
 	return nil
+}
+
+func (m *model) saveAnswer(idx int) tea.Cmd {
+	n, err := m.core.SaveAnswer(idx)
+	if err != nil {
+		m.setFlash(err.Error())
+	} else {
+		m.setFlash("Respuesta guardada: " + filepath.Join(filesDir(), n))
+	}
+	return nil
+}
+
+func (m *model) newChat() tea.Cmd {
+	m.core.NewChat()
+	m.partial, m.chatRoute = "", ""
+	m.renderChat()
+	return nil
+}
+
+func (m *model) media(kind, prompt string) tea.Cmd {
+	if b := m.core.Busy(); b != "" {
+		m.setFlash("Espera a que termine: " + b)
+		return nil
+	}
+	c := m.core
+	cmd := func() tea.Msg {
+		_, err := c.Media(kind, prompt)
+		return mediaDoneMsg{kind: kind, err: err}
+	}
+	label := map[string]string{"image": "la imagen", "video": "el vídeo (puede tardar minutos)", "audio": "la voz"}[kind]
+	m.setFlash("Generando " + label + "…")
+	return cmd
 }
 
 func (m *model) keyChat(k tea.KeyMsg) tea.Cmd {
 	switch k.String() {
 	case "enter":
-		if m.streaming {
-			return nil
-		}
 		text := strings.TrimSpace(m.ta.Value())
 		if text == "" {
 			return nil
 		}
-		m.ta.Reset()
 		if strings.HasPrefix(text, "/") {
+			m.ta.Reset()
 			return m.chatCommand(text)
 		}
-		m.history = append(m.history, storedMsg{chatMsg: chatMsg{Role: "user", Content: text}})
-		m.saveHistory()
-		return m.sendChat()
-	case "esc":
-		if m.streaming && m.cancel != nil {
-			m.cancel()
+		if b := m.core.Busy(); b != "" {
+			m.setFlash("Espera a que termine: " + b + " (Esc para parar)")
+			return nil
 		}
+		ch, err := m.core.Chat(text)
+		if err != nil {
+			m.setFlash(err.Error())
+			return nil
+		}
+		m.ta.Reset()
+		m.streaming = true
+		m.partial, m.chatRoute = "", ""
+		m.renderChat()
+		return waitChat(ch)
+	case "esc":
+		m.core.Stop()
 		return nil
 	case "ctrl+n":
-		if m.streaming && m.cancel != nil {
-			m.cancel()
-		}
-		m.history, m.partial, m.chatErr, m.chatRoute = nil, "", "", ""
-		m.saveHistory()
-		m.renderChat()
-		return nil
-	case "ctrl+b":
-		bs := m.cfg.backends()
-		for i, b := range bs {
-			if b.ID == m.cfg.ChatBackend {
-				return m.chatAction("backend", bs[(i+1)%len(bs)].ID)
-			}
-		}
+		return m.newChat()
 	case "ctrl+o":
 		return m.chatAction("model", "")
+	case "ctrl+s":
+		return m.saveAnswer(-1)
 	case "pgup", "pgdown", "ctrl+u", "ctrl+d":
 		var c tea.Cmd
 		m.vp, c = m.vp.Update(k)
@@ -335,50 +279,49 @@ func (m *model) keyChat(k tea.KeyMsg) tea.Cmd {
 
 func (m *model) chatCommand(cmd string) tea.Cmd {
 	f := strings.Fields(cmd)
-	switch f[0] {
+	rest := strings.TrimSpace(strings.TrimPrefix(cmd, f[0]))
+	switch strings.ToLower(f[0]) {
+	case "/imagen", "/image", "/img":
+		return m.mediaCmd("image", rest)
+	case "/video", "/vídeo":
+		return m.mediaCmd("video", rest)
+	case "/voz", "/audio", "/tts":
+		return m.mediaCmd("audio", rest)
+	case "/guardar", "/save":
+		return m.saveAnswer(-1)
+	case "/codigo", "/código", "/code":
+		return m.chatAction("code", "")
+	case "/exportar", "/export":
+		return m.chatAction("export", "")
 	case "/modelo", "/model":
-		if len(f) > 1 {
-			m.cfg.ChatModel = f[1]
-			_ = m.cfg.Save()
-			m.setFlash("Modelo: " + f[1])
+		if rest == "" {
+			return m.switchTab(tabModels)
 		}
+		m.core.SetModel(rest)
+		m.setFlash("Modelo: " + rest)
+		m.mlist = nil
 	case "/sistema", "/system":
-		m.cfg.ChatSystem = strings.TrimSpace(strings.TrimPrefix(cmd, f[0]))
+		m.cfg.mu.Lock()
+		m.cfg.ChatSystem = rest
+		m.cfg.mu.Unlock()
 		_ = m.cfg.Save()
-		m.setFlash("Prompt de sistema actualizado")
+		m.setFlash("Instrucciones del chat actualizadas")
 	case "/nuevo", "/new", "/clear":
-		return m.keyChat(tea.KeyMsg{Type: tea.KeyCtrlN})
-	case "/pasarela", "/repo":
-		if len(f) > 1 {
-			for _, b := range m.cfg.backends() {
-				if strings.EqualFold(b.ID, f[1]) || strings.EqualFold(appName(b.ID), f[1]) {
-					return m.chatAction("backend", b.ID)
-				}
-			}
-		}
-		m.setFlash("Usa: /pasarela infinito | omniroute | freellmapi")
+		return m.newChat()
+	case "/archivos", "/files":
+		return m.switchTab(tabFiles)
 	default:
-		m.setFlash("Comandos: /pasarela NOMBRE · /modelo NOMBRE · /sistema TEXTO · /nuevo")
+		m.setFlash(chatHelp)
 	}
 	return nil
 }
 
-func (m *model) sendChat() tea.Cmd {
-	b := m.chatBackend()
-	msgs := []chatMsg{}
-	if m.cfg.ChatSystem != "" {
-		msgs = append(msgs, chatMsg{Role: "system", Content: m.cfg.ChatSystem})
+func (m *model) mediaCmd(kind, prompt string) tea.Cmd {
+	if prompt == "" {
+		m.setFlash("Escribe qué quieres después del comando, por ejemplo: /imagen un gato astronauta")
+		return nil
 	}
-	for _, h := range m.history {
-		msgs = append(msgs, h.chatMsg)
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	m.cancel = cancel
-	m.streaming = true
-	m.partial, m.chatErr, m.chatRoute = "", "", ""
-	ch := chatStream(ctx, v1(b.URL), b.APIKey, m.cfg.ChatModel, msgs)
-	m.renderChat()
-	return waitChat(ch)
+	return m.media(kind, prompt)
 }
 
 func waitChat(ch <-chan chatEvent) tea.Cmd {
@@ -393,141 +336,230 @@ func waitChat(ch <-chan chatEvent) tea.Cmd {
 
 func (m *model) onChatEvent(msg chatEvMsg) tea.Cmd {
 	ev := msg.ev
-	switch {
-	case ev.Err != nil:
-		if !strings.Contains(ev.Err.Error(), "context canceled") {
-			m.chatErr = ev.Err.Error()
-		}
-		m.finishChat()
-		return nil
-	case ev.Route != "":
+	if ev.Route != "" {
 		m.chatRoute = ev.Route
-	case ev.Delta != "":
-		m.partial += ev.Delta
-	case ev.Done:
-		m.finishChat()
-		return nil
 	}
-	m.renderChat()
+	m.partial += ev.Delta
 	if msg.ch == nil {
+		// El canal se cerró: Core ya guardó la respuesta.
+		m.streaming = false
+		m.partial = ""
+		m.renderChat()
 		return nil
 	}
-	return waitChat(msg.ch)
-}
-
-func (m *model) finishChat() {
-	if !m.streaming {
-		return
-	}
-	m.streaming = false
-	if m.partial != "" {
-		via := appName(m.cfg.ChatBackend)
-		if m.chatRoute != "" {
-			via += " · " + m.chatRoute
-		}
-		m.history = append(m.history, storedMsg{chatMsg: chatMsg{Role: "assistant", Content: m.partial}, Via: via})
-		m.saveHistory()
-	}
-	m.partial = ""
 	m.renderChat()
+	return waitChat(msg.ch)
 }
 
 func (m *model) renderChat() {
 	w := max(20, m.vp.Width-1)
 	wrap := lipgloss.NewStyle().Width(w)
+	hist := m.core.History()
+	m.histLen = len(hist)
 	var sb strings.Builder
-	if len(m.history) == 0 && !m.streaming {
-		sb.WriteString(sDim.Render(wrap.Render("Escribe abajo y pulsa Enter (o el botón Enviar).\n\nArriba eliges con qué pasarela responde la IA. Puedes cambiar de pasarela cuando quieras: la conversación se mantiene y la siguiente respuesta la da la nueva.\n\nComandos: /pasarela NOMBRE · /modelo NOMBRE · /sistema TEXTO · /nuevo")))
+	if len(hist) == 0 && !m.streaming {
+		sb.WriteString(sDim.Render(wrap.Render("Escribe abajo y pulsa Enter (o Enviar). Responde FreeLLMAPI.\n\n" +
+			"Para imágenes, vídeo o voz escribe la descripción y pulsa 🖼 Imagen, 🎬 Vídeo o 🔊 Voz. " +
+			"Con 💾 guardas la última respuesta, con </> su código en archivos y con 📄 toda la conversación.\n\n" + chatHelp)))
 	}
-	for _, h := range m.history {
-		if h.Role == "user" {
+	for i, h := range hist {
+		switch {
+		case h.Role == "user":
 			sb.WriteString(sUser.Render("Tú") + "\n" + wrap.Render(h.Content) + "\n\n")
-		} else {
-			sb.WriteString(sBot.Render("IA") + sDim.Render(" · "+h.Via) + "\n" + wrap.Render(h.Content) + "\n\n")
+		case h.Kind == "error":
+			sb.WriteString(sBad.Render("Error") + "\n" + sBad.Render(wrap.Render(h.Content)) + "\n" +
+				sDim.Render(wrap.Render(errHint(h.Content))) + "\n\n")
+		case len(h.Files) > 0:
+			sb.WriteString(sBot.Render("IA") + sDim.Render(" · "+h.Via) + "\n")
+			for _, f := range h.Files {
+				icon := map[string]string{"image": "🖼", "video": "🎬", "audio": "🔊"}[fileKind(f)]
+				if icon == "" {
+					icon = "📎"
+				}
+				sb.WriteString(icon + " " + f + "  " + m.btn("file:open:"+f, "Abrir", sBtnPri) + "\n")
+			}
+			sb.WriteString("\n")
+		default:
+			save := m.btn(fmt.Sprintf("chat:saveidx:%d", i), "💾", sBtn)
+			sb.WriteString(sBot.Render("IA") + sDim.Render(" · "+h.Via) + " " + save + "\n" + wrap.Render(h.Content) + "\n\n")
 		}
 	}
 	if m.streaming {
-		via := appName(m.cfg.ChatBackend)
+		via := "FreeLLMAPI"
 		if m.chatRoute != "" {
 			via += " · " + m.chatRoute
 		}
 		sb.WriteString(sBot.Render("IA") + sDim.Render(" · "+via+" · escribiendo…") + "\n" + wrap.Render(m.partial+"▌") + "\n")
-	}
-	if m.chatErr != "" {
-		sb.WriteString(sBad.Render(wrap.Render("Error: "+m.chatErr)) + "\n" +
-			sDim.Render(wrap.Render(chatErrHint(m.cfg.ChatBackend, m.chatErr))) + "\n")
+	} else if b := m.core.Busy(); b != "" {
+		sb.WriteString(sWarn.Render("⏳ Generando "+b+"…") + "\n")
 	}
 	m.vp.SetContent(sb.String())
 	m.vp.GotoBottom()
 }
 
-func (m *model) viewChat() string {
-	var chips []string
-	for _, b := range m.cfg.backends() {
-		st := sBtn
-		if b.ID == m.cfg.ChatBackend {
-			st = sBtnPri
-		}
-		label := appName(b.ID)
-		if b.ID == "infinito" && m.narrow() {
-			label = "Integrada"
-		}
-		chips = append(chips, m.btn("chat:backend:"+b.ID, label, st))
+func (m *model) viewChat(height int) string {
+	model := m.core.model()
+	state := sOK.Render("●")
+	if !m.st.OK {
+		state = sBad.Render("●")
 	}
-	chips = append(chips, m.btn("chat:model:", "Modelo: "+truncate(m.cfg.ChatModel, 24)+" ▾", sBtn))
-	top := row(m.w, chips...)
+	top := row(m.w, state+" "+sDim.Render("FreeLLMAPI"), m.btn("chat:model:", "Modelo: "+truncate(model, 24)+" ▾", sBtn))
 	var actions []string
-	if m.streaming {
-		actions = append(actions, m.btn("chat:stop:", "Parar", sBtnBad))
+	if m.streaming || m.core.Busy() != "" {
+		actions = append(actions, m.btn("chat:stop:", "■ Parar", sBtnBad))
 	} else {
 		actions = append(actions, m.btn("chat:send:", "Enviar", sBtnPri))
 	}
-	actions = append(actions, m.btn("chat:new:", "Nueva conversación", sBtn))
+	actions = append(actions,
+		m.btn("chat:image:", "🖼 Imagen", sBtn),
+		m.btn("chat:video:", "🎬 Vídeo", sBtn),
+		m.btn("chat:audio:", "🔊 Voz", sBtn),
+		m.btn("chat:save:", "💾 Guardar", sBtn),
+		m.btn("chat:code:", "</> Código", sBtn),
+		m.btn("chat:export:", "📄 Exportar", sBtn),
+		m.btn("chat:new:", "Nuevo", sBtn),
+	)
 	bottom := row(m.w, actions...)
-	// el área de mensajes ocupa lo que quede
-	m.vp.Height = max(3, m.h-4-lipgloss.Height(top)-lipgloss.Height(bottom)-m.ta.Height()-1)
+	// Los botones del historial (Abrir, 💾) se registran al dibujar el visor.
+	m.renderChatKeepScroll()
+	m.vp.Height = max(3, height-lipgloss.Height(top)-lipgloss.Height(bottom)-m.ta.Height()-1)
 	return top + "\n" + m.vp.View() + "\n" + m.mark("chat:focus:", m.ta.View()) + "\n" + bottom
+}
+
+// renderChatKeepScroll vuelve a dibujar el historial sin mover el visor, para
+// que los botones del historial queden registrados en esta vista.
+func (m *model) renderChatKeepScroll() {
+	off := m.vp.YOffset
+	bottom := m.vp.AtBottom()
+	m.renderChat()
+	if !bottom {
+		m.vp.SetYOffset(off)
+	}
+}
+
+// ======================= Archivos =======================
+
+func (m *model) fileAction(what, name string) tea.Cmd {
+	if name == "" && m.fcursor < len(m.files) {
+		name = m.files[m.fcursor].Name
+	}
+	if what == "reload" {
+		m.files = ListFiles()
+		return nil
+	}
+	if what == "folder" {
+		if err := openURL(filesDir()); err != nil {
+			m.setFlash(err.Error())
+		}
+		return nil
+	}
+	if name == "" {
+		return nil
+	}
+	p, err := FilePath(name)
+	if err != nil {
+		m.setFlash(err.Error())
+		return nil
+	}
+	switch what {
+	case "open":
+		if err := openURL(p); err != nil {
+			m.setFlash(err.Error())
+		} else {
+			m.setFlash("Abriendo " + name)
+		}
+	case "copy":
+		copyClipboard(p)
+		m.setFlash("Ruta copiada: " + p)
+	case "del":
+		if m.confirmDel != name {
+			m.confirmDel = name
+			m.setFlash("Pulsa Borrar otra vez para borrar " + name)
+			return nil
+		}
+		m.confirmDel = ""
+		if err := DeleteFile(name); err != nil {
+			m.setFlash(err.Error())
+		} else {
+			m.setFlash("Borrado " + name)
+		}
+		m.files = ListFiles()
+		m.fcursor = min(m.fcursor, max(0, len(m.files)-1))
+	}
+	return nil
+}
+
+func (m *model) keyFiles(s string) tea.Cmd {
+	switch s {
+	case "up", "k":
+		m.fcursor = max(0, m.fcursor-1)
+		m.confirmDel = ""
+	case "down", "j":
+		m.fcursor = min(max(0, len(m.files)-1), m.fcursor+1)
+		m.confirmDel = ""
+	case "enter", "o":
+		return m.fileAction("open", "")
+	case "d", "delete":
+		return m.fileAction("del", "")
+	case "c":
+		return m.fileAction("copy", "")
+	case "r":
+		return m.fileAction("reload", "")
+	}
+	return nil
+}
+
+func (m *model) viewFiles(height int) string {
+	head := sDim.Render(truncate("Carpeta: "+filesDir(), m.w)) + "\n" +
+		row(m.w, m.btn("file:open:", "Abrir", sBtnPri), m.btn("file:copy:", "Copiar ruta", sBtn),
+			m.btn("file:del:", "Borrar", sBtnBad), m.btn("file:reload:", "Recargar", sBtn), m.btn("file:folder:", "Abrir carpeta", sBtn))
+	if len(m.files) == 0 {
+		return head + "\n\n" + sDim.Render(lipgloss.NewStyle().Width(m.w).Render("Todavía no hay archivos. En el chat usa 🖼 Imagen, 🎬 Vídeo, 🔊 Voz, 💾 Guardar, </> Código o 📄 Exportar."))
+	}
+	m.fcursor = min(m.fcursor, len(m.files)-1)
+	rows := max(3, height-lipgloss.Height(head)-1)
+	start := 0
+	if m.fcursor >= rows {
+		start = m.fcursor - rows + 1
+	}
+	var sb strings.Builder
+	for i := start; i < len(m.files) && i < start+rows; i++ {
+		f := m.files[i]
+		icon := map[string]string{"image": "🖼", "video": "🎬", "audio": "🔊"}[f.Kind]
+		if icon == "" {
+			icon = "📄"
+		}
+		meta := f.Time.Format("02/01 15:04") + " · " + humanSize(f.Size)
+		nameW := max(10, m.w-lipgloss.Width(meta)-8)
+		name := fmt.Sprintf("%-*s", nameW, truncate(f.Name, nameW))
+		mark := "  "
+		if i == m.fcursor {
+			mark = sSel.Render("▸ ")
+			name = sSel.Render(name)
+		}
+		sb.WriteString(m.mark(fmt.Sprintf("frow:%d", i), mark+icon+" "+name+" "+sDim.Render(meta)) + "\n")
+	}
+	return head + "\n" + sb.String()
 }
 
 // ======================= Modelos =======================
 
-func (m *model) setModelsBackend(i int) tea.Cmd {
-	bs := m.cfg.backends()
-	m.modelsBackend = (i + len(bs)) % len(bs)
-	nb := bs[m.modelsBackend]
-	if l, ok := m.models[nb.ID]; ok {
-		m.mlist = newPickList("mlist", l, false, nil)
-		return nil
-	}
-	m.mlist = nil
-	return m.loadModels(nb)
-}
-
 func (m *model) keyModels(k tea.KeyMsg) tea.Cmd {
-	bs := m.cfg.backends()
-	b := bs[m.modelsBackend]
 	if m.mlist != nil {
 		if ok, c := m.mlist.handleKey(k, m.h-10); ok {
 			return c
 		}
 	}
 	switch k.String() {
-	case "left", "h":
-		return m.setModelsBackend(m.modelsBackend - 1)
-	case "right", "l":
-		return m.setModelsBackend(m.modelsBackend + 1)
 	case "r":
-		delete(m.models, b.ID)
 		m.mlist = nil
-		return m.loadModels(b)
+		return m.loadModels()
 	case "enter":
 		if m.mlist == nil || m.mlist.current() == "" {
 			return nil
 		}
-		m.cfg.ChatBackend = b.ID
-		m.cfg.ChatModel = m.mlist.current()
-		_ = m.cfg.Save()
-		m.setFlash("Chat: " + appName(b.ID) + " · " + m.cfg.ChatModel)
+		m.core.SetModel(m.mlist.current())
+		m.setFlash("El chat usará " + m.mlist.current())
 		return m.switchTab(tabChat)
 	case "c":
 		if m.mlist != nil && m.mlist.current() != "" {
@@ -539,425 +571,20 @@ func (m *model) keyModels(k tea.KeyMsg) tea.Cmd {
 }
 
 func (m *model) viewModels(height int) string {
-	bs := m.cfg.backends()
-	var chips []string
-	for i, b := range bs {
-		st := sBtn
-		if i == m.modelsBackend {
-			st = sBtnPri
-		}
-		chips = append(chips, m.btn(fmt.Sprintf("mback:%d", i), appName(b.ID), st))
-	}
-	top := row(m.w, chips...)
 	acts := row(m.w, m.btn("mact:filter", "Buscar", sBtn), m.btn("mact:reload", "Recargar", sBtn), m.btn("mact:copy", "Copiar nombre", sBtn))
-	b := bs[m.modelsBackend]
-	out := top + "\n" + acts + "\n"
-	listH := height - lipgloss.Height(top) - lipgloss.Height(acts) - 2
+	intro := sDim.Render(lipgloss.NewStyle().Width(m.w).Render("En uso: " + m.core.model() + ". «auto» deja que FreeLLMAPI elija el mejor proveedor libre."))
+	out := intro + "\n" + acts + "\n"
+	listH := height - lipgloss.Height(intro) - lipgloss.Height(acts) - 2
 	switch {
 	case m.modelsLoading && m.mlist == nil:
-		out += sDim.Render("Cargando modelos de " + v1(b.URL) + "…")
-	case m.modelsErr[b.ID] != "":
-		out += sBad.Render(lipgloss.NewStyle().Width(m.w).Render("No pude leer los modelos: "+m.modelsErr[b.ID])) + "\n\n" +
-			sDim.Render(lipgloss.NewStyle().Width(m.w).Render("¿Está en marcha? Mira Inicio. ¿Falta la clave? Ponla en Ajustes."))
+		out += sDim.Render("Cargando modelos de FreeLLMAPI…")
+	case m.modelsErr != "":
+		out += sBad.Render(lipgloss.NewStyle().Width(m.w).Render("No pude leer los modelos: "+m.modelsErr)) + "\n\n" +
+			sDim.Render(lipgloss.NewStyle().Width(m.w).Render(errHint(m.modelsErr)))
 	case m.mlist != nil:
 		out += m.pickView(m.mlist, listH)
 	}
 	return out
-}
-
-// ======================= Proveedores =======================
-
-func (m *model) providerByID(id string) *Provider {
-	for i := range m.cfg.Providers {
-		if m.cfg.Providers[i].ID == id {
-			return &m.cfg.Providers[i]
-		}
-	}
-	return nil
-}
-
-func (m *model) providerAction(what string) tea.Cmd {
-	switch what {
-	case "edit":
-		return m.keyProviders(keyRune('e'))
-	case "toggle":
-		return m.keyProviders(keyRune(' '))
-	case "test":
-		return m.keyProviders(keyRune('t'))
-	case "fetch":
-		return m.keyProviders(keyRune('f'))
-	case "up":
-		return m.keyProviders(keyRune('+'))
-	case "down":
-		return m.keyProviders(keyRune('-'))
-	case "web":
-		return m.keyProviders(keyRune('w'))
-	case "add":
-		return m.keyProviders(keyRune('a'))
-	case "del":
-		return m.keyProviders(tea.KeyMsg{Type: tea.KeyDelete})
-	}
-	return nil
-}
-
-func (m *model) formSubmit(which string) tea.Cmd {
-	if which == "sform" {
-		return m.keySettings(tea.KeyMsg{Type: tea.KeyEnter})
-	}
-	return m.keyProviders(tea.KeyMsg{Type: tea.KeyEnter})
-}
-
-func (m *model) formCancel(which string) tea.Cmd {
-	if which == "sform" {
-		return m.keySettings(tea.KeyMsg{Type: tea.KeyEsc})
-	}
-	return m.keyProviders(tea.KeyMsg{Type: tea.KeyEsc})
-}
-
-func (m *model) keyProviders(k tea.KeyMsg) tea.Cmd {
-	s := k.String()
-	ps := m.cfg.Providers
-	if m.pform != nil {
-		switch s {
-		case "esc":
-			m.pform = nil
-			return nil
-		case "up", "shift+tab":
-			m.pform.move(-1)
-			return nil
-		case "down", "tab":
-			m.pform.move(1)
-			return nil
-		case "ctrl+r":
-			m.pform.toggleSecret()
-			return nil
-		case "enter":
-			v := m.pform.values()
-			m.cfg.mu.Lock()
-			if p := m.providerByID(m.pformID); p != nil {
-				p.APIKey = v[0]
-				p.BaseURL = v[1]
-				p.Models = splitList(v[2])
-				if p.APIKey != "" || p.NoKey {
-					p.Enabled = true
-				}
-				if strings.HasPrefix(p.ID, "custom") && len(v) > 3 && v[3] != "" {
-					p.Name = v[3]
-				}
-			}
-			m.cfg.mu.Unlock()
-			_ = m.cfg.Save()
-			m.pform = nil
-			m.setFlash("Guardado. Pulsa Probar para comprobarlo.")
-			return nil
-		}
-		return m.pform.update(k)
-	}
-	if m.ppick != nil {
-		if ok, c := m.ppick.handleKey(k, m.h-12); ok {
-			return c
-		}
-		switch s {
-		case "esc":
-			m.ppick = nil
-		case "enter":
-			m.cfg.mu.Lock()
-			if p := m.providerByID(m.ppickID); p != nil {
-				var out []string
-				for _, x := range p.Models {
-					if m.ppick.checked[x] {
-						out = append(out, x)
-					}
-				}
-				for _, x := range m.ppick.items {
-					if m.ppick.checked[x] && !contains(out, x) {
-						out = append(out, x)
-					}
-				}
-				p.Models = out
-			}
-			m.cfg.mu.Unlock()
-			_ = m.cfg.Save()
-			m.ppick = nil
-			m.setFlash("Modelos guardados")
-		}
-		return nil
-	}
-	if len(ps) == 0 {
-		return nil
-	}
-	m.pcursor = min(max(0, m.pcursor), len(ps)-1)
-	cur := ps[m.pcursor]
-	switch s {
-	case "up", "k":
-		m.pcursor = max(0, m.pcursor-1)
-	case "down", "j":
-		m.pcursor = min(len(ps)-1, m.pcursor+1)
-	case " ", "x":
-		m.cfg.mu.Lock()
-		m.cfg.Providers[m.pcursor].Enabled = !cur.Enabled
-		m.cfg.mu.Unlock()
-		_ = m.cfg.Save()
-		if !cur.Enabled && cur.APIKey == "" && !cur.NoKey {
-			m.setFlash("Activado, pero falta la clave: pulsa Editar")
-		}
-	case "+", "K", "shift+up":
-		if m.pcursor > 0 {
-			m.cfg.mu.Lock()
-			ps[m.pcursor], ps[m.pcursor-1] = ps[m.pcursor-1], ps[m.pcursor]
-			m.cfg.mu.Unlock()
-			m.pcursor--
-			_ = m.cfg.Save()
-		}
-	case "-", "J", "shift+down":
-		if m.pcursor < len(ps)-1 {
-			m.cfg.mu.Lock()
-			ps[m.pcursor], ps[m.pcursor+1] = ps[m.pcursor+1], ps[m.pcursor]
-			m.cfg.mu.Unlock()
-			m.pcursor++
-			_ = m.cfg.Save()
-		}
-	case "enter", "e":
-		labels := []string{"Clave API (pégala aquí)", "URL base (…/v1)", "Modelos, en orden, separados por comas"}
-		vals := []string{cur.APIKey, cur.BaseURL, strings.Join(cur.Models, ", ")}
-		secret := []bool{true, false, false}
-		if strings.HasPrefix(cur.ID, "custom") {
-			labels = append(labels, "Nombre")
-			vals = append(vals, cur.Name)
-			secret = append(secret, false)
-		}
-		title := cur.Name
-		if cur.KeyURL != "" {
-			title += " · clave en " + cur.KeyURL
-		}
-		m.pform = newForm("pform", title, labels, vals, secret, m.w)
-		m.pformID = cur.ID
-		return textinput.Blink
-	case "t":
-		m.pmsg[cur.ID] = sDim.Render("probando…")
-		p := cur
-		return func() tea.Msg {
-			out, err := testProvider(context.Background(), p)
-			return provTestMsg{id: p.ID, out: out, err: err}
-		}
-	case "f":
-		m.pmsg[cur.ID] = sDim.Render("descargando lista de modelos…")
-		p := cur
-		return func() tea.Msg {
-			l, err := listModels(context.Background(), p.BaseURL, p.APIKey)
-			return provModelsMsg{id: p.ID, list: l, err: err}
-		}
-	case "a":
-		n := 1
-		for m.providerByID(fmt.Sprintf("custom%d", n)) != nil {
-			n++
-		}
-		m.cfg.mu.Lock()
-		m.cfg.Providers = append(m.cfg.Providers, Provider{ID: fmt.Sprintf("custom%d", n), Name: fmt.Sprintf("Personalizado %d", n), BaseURL: "https://", Models: []string{}})
-		m.cfg.mu.Unlock()
-		m.pcursor = len(m.cfg.Providers) - 1
-		_ = m.cfg.Save()
-		return m.keyProviders(keyRune('e'))
-	case "delete":
-		if strings.HasPrefix(cur.ID, "custom") {
-			m.cfg.mu.Lock()
-			m.cfg.Providers = append(ps[:m.pcursor], ps[m.pcursor+1:]...)
-			m.cfg.mu.Unlock()
-			_ = m.cfg.Save()
-			m.pcursor = max(0, m.pcursor-1)
-		} else {
-			m.setFlash("Solo se pueden borrar los proveedores personalizados")
-		}
-	case "w":
-		if cur.KeyURL != "" {
-			_ = openURL(cur.KeyURL)
-			copyClipboard(cur.KeyURL)
-			m.setFlash("Abriendo " + cur.KeyURL)
-		}
-	}
-	return nil
-}
-
-func (m *model) viewProviders(height int) string {
-	if m.pform != nil {
-		return m.formView(m.pform, height)
-	}
-	if m.ppick != nil {
-		p := m.providerByID(m.ppickID)
-		head := sTitle.Render("Elige los modelos de "+p.Name) + "\n" +
-			row(m.w, m.btn("ppick:save", "Guardar", sBtnPri), m.btn("ppick:cancel", "Cancelar", sBtn), m.btn("ppick:filter", "Buscar", sBtn)) + "\n" +
-			sDim.Render("Toca un modelo para marcarlo o desmarcarlo")
-		return head + "\n" + m.pickView(m.ppick, height-lipgloss.Height(head)-1)
-	}
-	ps := m.cfg.Providers
-	m.pcursor = min(max(0, m.pcursor), max(0, len(ps)-1))
-	var cur Provider
-	if len(ps) > 0 {
-		cur = ps[m.pcursor]
-	}
-	toggle := "Activar"
-	if cur.Enabled {
-		toggle = "Desactivar"
-	}
-	acts := []string{
-		m.btn("pact:edit", "Poner clave", sBtnPri),
-		m.btn("pact:toggle", toggle, sBtn),
-		m.btn("pact:test", "Probar", sBtn),
-		m.btn("pact:fetch", "Elegir modelos", sBtn),
-		m.btn("pact:up", "▲ Subir", sBtn),
-		m.btn("pact:down", "▼ Bajar", sBtn),
-	}
-	if cur.KeyURL != "" {
-		acts = append(acts, m.btn("pact:web", "Web de la clave", sBtn))
-	}
-	acts = append(acts, m.btn("pact:add", "+ Añadir propio", sBtn))
-	if strings.HasPrefix(cur.ID, "custom") {
-		acts = append(acts, m.btn("pact:del", "Borrar", sBtnBad))
-	}
-	actions := row(m.w, acts...)
-	intro := sDim.Render(lipgloss.NewStyle().Width(m.w).Render("Proveedores de la pasarela integrada. El orden es la cadena de respaldo: si el de arriba llega a su límite, salta al siguiente."))
-	info := ""
-	if len(ps) > 0 {
-		info = sDim.Render("Modelos: ") + truncate(strings.Join(cur.Models, " → "), m.w*2-10)
-		if msg := m.pmsg[cur.ID]; msg != "" {
-			info += "\n" + msg
-		}
-		info = lipgloss.NewStyle().Width(m.w).Render(info)
-	}
-	rowsH := max(3, height-lipgloss.Height(intro)-lipgloss.Height(actions)-lipgloss.Height(info)-2)
-	start := 0
-	if m.pcursor >= rowsH {
-		start = m.pcursor - rowsH + 1
-	}
-	var sb strings.Builder
-	for i := start; i < len(ps) && i < start+rowsH; i++ {
-		p := ps[i]
-		on := sDim.Render("[ ]")
-		if p.Enabled {
-			on = sOK.Render("[x]")
-		}
-		key := sWarn.Render("sin clave")
-		if p.NoKey {
-			key = sDim.Render("no necesita")
-		} else if p.APIKey != "" {
-			key = sOK.Render("clave " + maskKey(p.APIKey))
-		}
-		nameW := 24
-		if m.narrow() {
-			nameW = max(10, m.w-30)
-		}
-		name := fmt.Sprintf("%-*s", nameW, truncate(p.Name, nameW))
-		mark := "  "
-		if i == m.pcursor {
-			mark = sSel.Render("▸ ")
-			name = sSel.Render(name)
-		}
-		line := mark + m.mark(fmt.Sprintf("prow:%d:toggle", i), on) + " " + m.mark(fmt.Sprintf("prow:%d", i), name+" "+key)
-		if !m.narrow() && p.Note != "" {
-			line += " " + sDim.Render(truncate(p.Note, m.w-60))
-		}
-		sb.WriteString(lipgloss.NewStyle().MaxWidth(m.w).Render(line) + "\n")
-	}
-	return intro + "\n" + sb.String() + info + "\n" + actions
-}
-
-// ======================= Claude Code =======================
-
-type claudeOpt struct {
-	title, desc string
-}
-
-func (m *model) claudeOpts() []claudeOpt {
-	return []claudeOpt{
-		{"Con la pasarela integrada", "Abre 'claude' conectado a " + m.cfg.gatewayURL() + " con el modelo auto."},
-		{"Con OmniRoute", "Ejecuta 'omniroute run claude --model auto' con el OmniRoute instalado."},
-		{"Con FreeLLMAPI", "Abre 'claude' conectado a " + m.cfg.FreeLLMAPI.URL + " con tu clave única."},
-		{"Copiar las variables", "Para conectar Claude Code desde otra terminal a la pasarela integrada."},
-	}
-}
-
-func (m *model) keyClaude(s string) tea.Cmd {
-	opts := m.claudeOpts()
-	switch s {
-	case "up", "k":
-		m.ccursor = max(0, m.ccursor-1)
-	case "down", "j":
-		m.ccursor = min(len(opts)-1, m.ccursor+1)
-	case "enter":
-		done := func(err error) tea.Msg { return execDoneMsg{err} }
-		switch m.ccursor {
-		case 0:
-			if on, _ := m.gw.Running(); !on {
-				if err := m.gw.Start(); err != nil {
-					m.setFlash("La pasarela no arranca: " + err.Error())
-					return nil
-				}
-			}
-			if len(m.gw.chain()) == 0 {
-				m.setFlash("Antes añade al menos un proveedor con clave (pestaña Proveedores)")
-				return nil
-			}
-			cmd, err := claudeCmd(claudeEnv(m.cfg.gatewayURL(), m.cfg.GatewayKey, "auto"))
-			if err != nil {
-				m.setFlash(err.Error())
-				return nil
-			}
-			return tea.ExecProcess(cmd, done)
-		case 1:
-			var cmd *exec.Cmd
-			if m.apps.Installed("omniroute") {
-				if which("claude") == "" {
-					m.setFlash("No encuentro 'claude'. Instálalo con: npm install -g @anthropic-ai/claude-code")
-					return nil
-				}
-				cmd = exec.Command(nodeBin(), appEntry("omniroute"), "run", "claude", "--model", "auto")
-				cmd.Env = append(nodeEnv(), "DATA_DIR="+dataDir()+string(os.PathSeparator)+"data"+string(os.PathSeparator)+"omniroute")
-			} else {
-				var err error
-				if cmd, err = omnirouteRunCmd("auto"); err != nil {
-					m.setFlash("OmniRoute no está instalado: ve a Inicio y pulsa Instalar")
-					return nil
-				}
-			}
-			return tea.ExecProcess(cmd, done)
-		case 2:
-			if m.cfg.FreeLLMAPI.APIKey == "" {
-				m.setFlash("Pon la clave única de FreeLLMAPI en Ajustes (la ves en su panel web, en Keys)")
-				return nil
-			}
-			cmd, err := claudeCmd(claudeEnv(m.cfg.FreeLLMAPI.URL, m.cfg.FreeLLMAPI.APIKey, ""))
-			if err != nil {
-				m.setFlash(err.Error())
-				return nil
-			}
-			return tea.ExecProcess(cmd, done)
-		case 3:
-			script := envScript(claudeEnv(m.cfg.gatewayURL(), m.cfg.GatewayKey, "auto"))
-			copyClipboard(script)
-			m.setFlash("Variables copiadas. También las muestra: infinito env")
-		}
-	}
-	return nil
-}
-
-func (m *model) viewClaude() string {
-	var sb strings.Builder
-	cwd, _ := os.Getwd()
-	sb.WriteString(sDim.Render(truncate("Se abrirá en la carpeta: "+cwd, m.w)) + "\n")
-	if which("claude") == "" {
-		sb.WriteString(sWarn.Render(lipgloss.NewStyle().Width(m.w).Render("No encuentro 'claude' en este equipo. Claude Code se instala aparte: npm install -g @anthropic-ai/claude-code")) + "\n")
-	}
-	sb.WriteString("\n")
-	for i, o := range m.claudeOpts() {
-		st := sCard
-		if i == m.ccursor {
-			st = sCardOn
-		}
-		card := st.Width(min(m.w, 90) - 2).Render(sBold.Render("▶ "+o.title) + "\n" + sDim.Render(o.desc))
-		sb.WriteString(m.mark(fmt.Sprintf("claude:%d", i), card) + "\n")
-	}
-	sb.WriteString(sDim.Render("Al cerrar Claude Code vuelves aquí."))
-	return sb.String()
 }
 
 // ======================= Guías =======================
@@ -992,7 +619,7 @@ func (m *model) keyGuides(k tea.KeyMsg) tea.Cmd {
 	return c
 }
 
-func (m *model) viewGuides() string {
+func (m *model) viewGuides(height int) string {
 	if m.narrow() {
 		var chips []string
 		for i, g := range m.guides {
@@ -1003,7 +630,7 @@ func (m *model) viewGuides() string {
 			chips = append(chips, m.btn(fmt.Sprintf("guide:%d", i), truncate(g.Title, 22), st))
 		}
 		top := row(m.w, chips...)
-		m.gvp.Height = max(3, m.h-5-lipgloss.Height(top))
+		m.gvp.Height = max(3, height-lipgloss.Height(top)-1)
 		return top + "\n" + m.gvp.View()
 	}
 	var left strings.Builder
@@ -1022,20 +649,29 @@ func (m *model) viewGuides() string {
 // ======================= Ajustes =======================
 
 var settingsLabels = []string{
-	"Puerto de la pasarela integrada", "Escuchar en (127.0.0.1 = solo este equipo)", "Clave de la pasarela integrada", "Tokens máximos por respuesta",
-	"Arrancar la pasarela al abrir (s/n)", "URL de OmniRoute", "Clave de OmniRoute (Dashboard → Endpoints)", "URL de FreeLLMAPI", "Clave única de FreeLLMAPI (Keys)",
+	"Al abrir Infinito (preguntar / gui / tui)",
+	"Arrancar FreeLLMAPI al abrir (s/n)",
+	"URL de FreeLLMAPI",
+	"Clave única de FreeLLMAPI (se rellena sola)",
+	"Modelo del chat (auto = el mejor libre)",
 	"Instrucciones para el chat (prompt de sistema)",
+	"Puerto de la interfaz gráfica",
 }
 
 func (m *model) openSettings() {
 	c := m.cfg
-	auto := "s"
-	if !c.GatewayAutoRun {
-		auto = "n"
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	mode := c.StartMode
+	if mode == "" {
+		mode = "preguntar"
 	}
-	vals := []string{itoa(c.GatewayPort), c.GatewayHost, c.GatewayKey, itoa(c.MaxTokensCap), auto,
-		c.OmniRoute.URL, c.OmniRoute.APIKey, c.FreeLLMAPI.URL, c.FreeLLMAPI.APIKey, c.ChatSystem}
-	secret := []bool{false, false, true, false, false, false, true, false, true, false}
+	fauto := "s"
+	if c.FreeLLMAPIManual {
+		fauto = "n"
+	}
+	vals := []string{mode, fauto, c.FreeLLMAPI.URL, c.FreeLLMAPI.APIKey, c.ChatModel, c.ChatSystem, itoa(c.GUIPort)}
+	secret := []bool{false, false, false, true, false, false, false}
 	m.sform = newForm("sform", "Ajustes", settingsLabels, vals, secret, m.w)
 }
 
@@ -1059,56 +695,41 @@ func (m *model) keySettings(k tea.KeyMsg) tea.Cmd {
 		return nil
 	case "enter", "ctrl+s":
 		v := m.sform.values()
-		c := m.cfg
-		port, err := strconv.Atoi(v[0])
+		mode := strings.ToLower(v[0])
+		switch {
+		case strings.HasPrefix(mode, "g"):
+			mode = "gui"
+		case strings.HasPrefix(mode, "t"):
+			mode = "tui"
+		default:
+			mode = ""
+		}
+		port, err := strconv.Atoi(v[6])
 		if err != nil || port < 1 || port > 65535 {
 			m.setFlash("Puerto no válido")
 			return nil
 		}
-		maxTok, _ := strconv.Atoi(v[3])
-		restart := port != c.GatewayPort || v[1] != c.GatewayHost
+		c := m.cfg
 		c.mu.Lock()
-		c.GatewayPort = port
-		c.GatewayHost = v[1]
-		c.GatewayKey = v[2]
-		c.MaxTokensCap = maxTok
-		c.GatewayAutoRun = !strings.HasPrefix(strings.ToLower(v[4]), "n")
-		c.OmniRoute.URL, c.OmniRoute.Dashboard = v[5], strings.TrimSuffix(v[5], "/v1")
-		c.OmniRoute.APIKey = v[6]
-		c.FreeLLMAPI.URL, c.FreeLLMAPI.Dashboard = v[7], strings.TrimSuffix(v[7], "/v1")
-		c.FreeLLMAPI.APIKey = v[8]
-		c.ChatSystem = v[9]
+		c.StartMode = mode
+		c.FreeLLMAPIManual = strings.HasPrefix(strings.ToLower(v[1]), "n")
+		u := strings.TrimSuffix(strings.TrimRight(v[2], "/"), "/v1")
+		c.FreeLLMAPI.URL, c.FreeLLMAPI.Dashboard = u, u
+		c.FreeLLMAPI.APIKey = v[3]
+		c.ChatModel = v[4]
+		if c.ChatModel == "" {
+			c.ChatModel = "auto"
+		}
+		c.ChatSystem = v[5]
+		c.GUIPort = port
 		c.mu.Unlock()
 		if err := c.Save(); err != nil {
 			m.setFlash("No pude guardar: " + err.Error())
 			return nil
 		}
-		if restart {
-			if on, _ := m.gw.Running(); on {
-				m.gw.Stop()
-				_ = m.gw.Start()
-			}
-		}
-		m.models = map[string][]string{}
+		m.mlist = nil
 		m.setFlash("Ajustes guardados")
-		return m.checkBackends()
+		return m.refresh()
 	}
 	return m.sform.update(k)
-}
-
-// chatErrHint explica qué hacer cuando la pasarela elegida no tiene ningún
-// proveedor que responda (lo normal recién instalada, sin claves).
-func chatErrHint(backend, err string) string {
-	e := strings.ToLower(err)
-	noProv := strings.Contains(e, "provider") || strings.Contains(e, "no_providers") ||
-		strings.Contains(e, "api key") || strings.Contains(e, "exhausted")
-	switch {
-	case backend == "omniroute" && noProv:
-		return "OmniRoute funciona, pero aún no tiene ningún proveedor con clave: los gratuitos sin clave que trae ahora no responden. En Inicio pulsa «Panel web» de OmniRoute, entra en Providers y añade una clave gratuita (Groq, Gemini, OpenRouter…). También puedes usar la Pasarela integrada con las claves de la pestaña Proveedores."
-	case backend == "freellmapi" && noProv:
-		return "FreeLLMAPI funciona, pero necesita claves de proveedor. En Inicio pulsa «Panel web» de FreeLLMAPI y añade una clave gratuita, o usa la Pasarela integrada."
-	case backend == "infinito" && noProv:
-		return "Añade una clave gratuita en la pestaña Proveedores (por ejemplo Groq o Gemini) y vuelve a probar."
-	}
-	return "Prueba con otra pasarela arriba, o revisa Inicio y Ajustes."
 }
