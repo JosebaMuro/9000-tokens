@@ -63,7 +63,7 @@ jobs:
           cp /d/infinito-android-termux-arm64 $A/libinfinito.so
           mkfifo $A/f
           ultimas() { local -a L; mapfile -t L < "$1"; local n=${#L[@]}; local s=$(( n > $2 ? n - $2 : 0 )); printf '%s\n' "${L[@]:s}"; }
-          hget() { if exec 5<>/dev/tcp/127.0.0.1/$1; then printf 'GET %s HTTP/1.0\r\nHost: x\r\nAuthorization: Bearer %s\r\n\r\n' "$2" "$3" >&5; read -t 30 -r l <&5; echo "$1$2 -> $l"; exec 5>&-; else echo "$1 cerrado"; fi; }
+          hget() { if exec 5<>/dev/tcp/127.0.0.1/$1; then printf 'GET %s HTTP/1.0\r\nHost: 127.0.0.1\r\nAuthorization: Bearer %s\r\n\r\n' "$2" "$3" >&5; read -t 30 -r l <&5; echo "$1$2 -> $l"; exec 5>&-; else echo "$1 cerrado"; fi; }
           export HOME=$A/home TMPDIR=$A/cache INFINITO_HOME=$A/config INFINITO_DATA=$A/infinito INFINITO_ANDROID_APP=1
           mv $P/lib $P/lib.off
           # Como en un móvil con Termux instalado: su carpeta existe pero no se puede leer.
@@ -83,6 +83,5 @@ jobs:
           echo "== serve.log"; ultimas $A/serve.log 30
           for l in $A/infinito/logs/*.log; do echo "--- $l"; ultimas "$l" 50; done
           mv $P/lib.off $P/lib
-          ls $A/infinito/runtime/termux/usr/lib | head -100
           SH
           docker run --rm --privileged -v "$PWD/d:/d" termux/termux-docker:aarch64 bash /d/test.sh
