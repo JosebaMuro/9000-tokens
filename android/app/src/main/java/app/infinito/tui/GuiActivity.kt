@@ -76,7 +76,7 @@ class GuiActivity : Activity(), ServiceConnection {
                     return true
                 }
                 override fun onPageFinished(view: WebView, url: String?) {
-                    if (loaded) overlay.visibility = View.GONE
+                    if (loaded) this@GuiActivity.overlay.visibility = View.GONE
                 }
             }
         }
