@@ -160,4 +160,8 @@ jobs:
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --title "Infinito $TAG" --notes-file RELEASE_NOTES.md --target "$GITHUB_SHA"
           fi
+          # Restos de pruebas subidos por error en ejecuciones anteriores.
+          for a in $(gh release view "$TAG" --json assets -q '.assets[].name' | grep -E '\.(txt|png|xml)$' | grep -v SHA256SUMS); do
+            gh release delete-asset "$TAG" "$a" -y || true
+          done
           gh release upload "$TAG" dist/* --clobber
