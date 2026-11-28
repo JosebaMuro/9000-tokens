@@ -10,25 +10,7 @@ DIR=$(adb shell pm path app.infinito.tui | sed 's/package://;s/base.apk//' | tr 
 LIB="${DIR}lib/x86_64/libinfinito.so"
 adb shell "run-as app.infinito.tui $LIB version"; echo "salida: $?"
 
-# Toca el elemento de la pantalla que contiene un texto.
-tap_text() {
-  adb shell uiautomator dump /sdcard/ui.xml >/dev/null
-  adb shell cat /sdcard/ui.xml > shots/ui.xml
-  b=$(python3 - "$1" <<'PY'
-import re,sys
-x=open('shots/ui.xml',encoding='utf-8',errors='ignore').read()
-for m in re.finditer(r'<node [^>]*>',x):
-    n=m.group(0)
-    if sys.argv[1] in n:
-        b=re.search(r'bounds="\[(\d+),(\d+)\]\[(\d+),(\d+)\]"',n)
-        if b:
-            a=list(map(int,b.groups())); print((a[0]+a[2])//2,(a[1]+a[3])//2); break
-PY
-)
-  echo "tocar '$1' en: $b"
-  [ -n "$b" ] && adb shell input tap $b
-}
-texts() { adb shell uiautomator dump /sdcard/ui.xml >/dev/null; adb shell cat /sdcard/ui.xml | grep -o 'text="[^"]*"' | grep -v 'text=""' | head -60; }
+. "$(dirname "$0")/android-lib.sh"
 
 ok=1
 adb shell am start -W -n app.infinito.tui/.ChooserActivity
@@ -50,7 +32,9 @@ ST=$(curl -s -m 5 -H "X-Token: $TOK" http://127.0.0.1:18686/app/api/state)
 echo "estado: $ST" | tee shots/estado.txt
 echo "$ST" | grep -q '"version"' || ok=0
 texts | tee shots/gui.txt
-grep -q "Archivos" shots/gui.txt || { echo "FALLO: la GUI no se ve en el WebView"; ok=0; }
+adb logcat -d | grep -E "chromium.*CONSOLE|Uncaught" | tee shots/consola.txt
+grep -q "Uncaught" shots/consola.txt && { echo "FALLO: error de JavaScript en la GUI"; ok=0; }
+adb logcat -d | grep -q "app/#t=" || { echo "FALLO: el WebView no cargó la GUI"; ok=0; }
 
 # Cambiar a la TUI desde la pantalla de elección.
 adb shell am start -W -n app.infinito.tui/.ChooserActivity --ez choose true

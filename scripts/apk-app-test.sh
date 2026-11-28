@@ -4,9 +4,10 @@
 set -x
 adb install -r -g "$1" || exit 1
 RA() { adb shell "run-as app.infinito.tui sh -c 'cd /data/data/app.infinito.tui && $1'"; }
-# Recordar la GUI para que se abra directamente.
-RA "mkdir -p shared_prefs && echo \"<?xml version='1.0' encoding='utf-8' standalone='yes' ?><map><string name=\\\"start\\\">gui</string></map>\" > shared_prefs/modo.xml"
+. "$(dirname "$0")/android-lib.sh"
 adb shell am start -W -n app.infinito.tui/.ChooserActivity
+sleep 4
+tap_text "Aplicación"
 adb forward tcp:18686 tcp:8686; adb forward tcp:13001 tcp:3001
 ok=0
 for i in $(seq 1 40); do
