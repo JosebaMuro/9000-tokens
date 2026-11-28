@@ -192,7 +192,7 @@ func (c *Core) Chat(text string) (<-chan chatEvent, error) {
 			if route != "" {
 				via += " · " + route
 			}
-			c.append(storedMsg{chatMsg: chatMsg{Role: "assistant", Content: sb.String()}, Via: via})
+			c.append(storedMsg{chatMsg: chatMsg{Role: "assistant", Content: strings.TrimSpace(sb.String())}, Via: via})
 		}
 	}()
 	return out, nil
