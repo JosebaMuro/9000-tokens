@@ -455,7 +455,7 @@ func (m *model) renderChat() {
 	}
 	if m.chatErr != "" {
 		sb.WriteString(sBad.Render(wrap.Render("Error: "+m.chatErr)) + "\n" +
-			sDim.Render(wrap.Render("Prueba con otra pasarela arriba, o revisa Inicio y Ajustes.")) + "\n")
+			sDim.Render(wrap.Render(chatErrHint(m.cfg.ChatBackend, m.chatErr))) + "\n")
 	}
 	m.vp.SetContent(sb.String())
 	m.vp.GotoBottom()
@@ -1094,4 +1094,21 @@ func (m *model) keySettings(k tea.KeyMsg) tea.Cmd {
 		return m.checkBackends()
 	}
 	return m.sform.update(k)
+}
+
+// chatErrHint explica qué hacer cuando la pasarela elegida no tiene ningún
+// proveedor que responda (lo normal recién instalada, sin claves).
+func chatErrHint(backend, err string) string {
+	e := strings.ToLower(err)
+	noProv := strings.Contains(e, "provider") || strings.Contains(e, "no_providers") ||
+		strings.Contains(e, "api key") || strings.Contains(e, "exhausted")
+	switch {
+	case backend == "omniroute" && noProv:
+		return "OmniRoute funciona, pero aún no tiene ningún proveedor con clave: los gratuitos sin clave que trae ahora no responden. En Inicio pulsa «Panel web» de OmniRoute, entra en Providers y añade una clave gratuita (Groq, Gemini, OpenRouter…). También puedes usar la Pasarela integrada con las claves de la pestaña Proveedores."
+	case backend == "freellmapi" && noProv:
+		return "FreeLLMAPI funciona, pero necesita claves de proveedor. En Inicio pulsa «Panel web» de FreeLLMAPI y añade una clave gratuita, o usa la Pasarela integrada."
+	case backend == "infinito" && noProv:
+		return "Añade una clave gratuita en la pestaña Proveedores (por ejemplo Groq o Gemini) y vuelve a probar."
+	}
+	return "Prueba con otra pasarela arriba, o revisa Inicio y Ajustes."
 }
